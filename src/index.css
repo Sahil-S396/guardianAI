@@ -1,0 +1,284 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────
+   GuardianAI Global Design System
+   ───────────────────────────────────── */
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-navy font-sans text-white antialiased;
+    background-color: #0a0f1e;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0d1326;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #253257;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+@layer components {
+  /* ─── Glass Card ─── */
+  .glass-card {
+    @apply rounded-xl border backdrop-blur-sm;
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-200 hover:bg-white/[0.07] hover:border-white/20 hover:shadow-glass cursor-pointer;
+  }
+
+  /* ─── Buttons ─── */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200;
+    @apply bg-accent-red text-white hover:bg-red-400 hover:shadow-glow-red active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200;
+    @apply bg-white/10 text-white border border-white/15 hover:bg-white/20 hover:border-white/30 active:scale-95;
+  }
+
+  .btn-drill {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200;
+    @apply bg-accent-amber text-navy font-bold hover:bg-yellow-300 hover:shadow-glow-amber active:scale-95;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200;
+    @apply bg-red-700/40 text-accent-red border border-red-500/40 hover:bg-red-600/50 hover:border-red-400 active:scale-95;
+  }
+
+  .btn-icon {
+    @apply p-2 rounded-lg transition-all duration-200 hover:bg-white/10 active:scale-95;
+  }
+
+  /* ─── Status Badges ─── */
+  .badge-clear {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+
+  .badge-alert {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    @apply bg-accent-amber/20 text-accent-amber border border-accent-amber/30;
+  }
+
+  .badge-critical {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    @apply bg-accent-red/20 text-accent-red border border-accent-red/30 animate-pulse;
+  }
+
+  .badge-escalated {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    @apply bg-purple-500/20 text-purple-400 border border-purple-500/30;
+  }
+
+  .badge-active {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    @apply bg-blue-500/20 text-blue-400 border border-blue-500/30;
+  }
+
+  .badge-acknowledged {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+
+  /* ─── Alert banner variants ─── */
+  .alert-banner-fire {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg border;
+    @apply bg-accent-red/10 border-accent-red/30 text-accent-red;
+  }
+
+  .alert-banner-fall {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg border;
+    @apply bg-accent-amber/10 border-accent-amber/30 text-accent-amber;
+  }
+
+  .alert-banner-drill {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg border;
+    @apply bg-accent-amber/10 border-accent-amber/30 text-accent-amber;
+  }
+
+  /* ─── Table ─── */
+  .guardian-table {
+    @apply w-full text-sm;
+  }
+
+  .guardian-table thead {
+    @apply border-b border-white/10;
+  }
+
+  .guardian-table th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white/50;
+  }
+
+  .guardian-table td {
+    @apply px-4 py-3.5 border-b border-white/5;
+  }
+
+  .guardian-table tbody tr {
+    @apply transition-colors duration-150 hover:bg-white/[0.03];
+  }
+
+  /* ─── Input ─── */
+  .guardian-input {
+    @apply w-full px-3.5 py-2.5 rounded-lg text-sm text-white placeholder-white/30 transition-all duration-200;
+    @apply bg-white/5 border border-white/10 focus:outline-none focus:border-accent-blue/60 focus:bg-white/[0.07];
+  }
+
+  .guardian-select {
+    @apply guardian-input cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff60' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+    appearance: none;
+  }
+
+  /* ─── Sidebar ─── */
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200;
+    @apply text-white/60 hover:text-white hover:bg-white/5 cursor-pointer;
+  }
+
+  .sidebar-item.active {
+    @apply text-white bg-white/10 border border-white/10;
+  }
+
+  /* ─── Drill mode overrides ─── */
+  .drill-mode .btn-primary {
+    @apply bg-accent-amber text-navy hover:bg-yellow-300;
+  }
+
+  .drill-mode .badge-critical {
+    @apply bg-accent-amber/20 text-accent-amber border-accent-amber/30;
+  }
+
+  /* ─── Stat card ─── */
+  .stat-card {
+    @apply glass-card p-4 flex flex-col gap-1;
+  }
+
+  /* ─── Section header ─── */
+  .section-header {
+    @apply flex items-center justify-between mb-5;
+  }
+
+  .section-title {
+    @apply text-lg font-semibold text-white;
+  }
+
+  /* ─── Loading spinner ─── */
+  .spinner {
+    @apply h-6 w-6 rounded-full border-2 border-white/20 border-t-accent-red animate-spin;
+  }
+
+  /* ─── Room card status glow ─── */
+  .room-clear {
+    border-color: rgba(52, 211, 153, 0.3);
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.1);
+  }
+
+  .room-alert {
+    border-color: rgba(245, 158, 11, 0.5);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+  }
+
+  .room-critical {
+    border-color: rgba(255, 59, 59, 0.6);
+    box-shadow: 0 0 16px rgba(255, 59, 59, 0.25);
+  }
+
+  /* ─── Progress bar ─── */
+  .progress-bar-track {
+    @apply w-full h-2 rounded-full bg-white/10;
+  }
+
+  .progress-bar-fill {
+    @apply h-full rounded-full transition-all duration-1000;
+  }
+
+  /* ─── Glow dot ─── */
+  .glow-dot-red {
+    @apply h-2 w-2 rounded-full bg-accent-red shadow-glow-red;
+  }
+
+  .glow-dot-green {
+    @apply h-2 w-2 rounded-full bg-emerald-400;
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.6);
+  }
+
+  .glow-dot-amber {
+    @apply h-2 w-2 rounded-full bg-accent-amber shadow-glow-amber;
+  }
+}
+
+/* ─── Utility animations ─── */
+@layer utilities {
+  .text-gradient-red {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #ff3b3b, #ff8080);
+  }
+
+  .text-gradient-blue {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  }
+
+  .bg-grid-pattern {
+    background-image: 
+      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .bg-dots-pattern {
+    background-image: radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Amber drill mode glow bg */
+  .bg-drill-glow {
+    background: radial-gradient(ellipse at center, rgba(245, 158, 11, 0.08) 0%, transparent 70%);
+  }
+
+  /* Red alert glow bg */
+  .bg-alert-glow {
+    background: radial-gradient(ellipse at center, rgba(255, 59, 59, 0.08) 0%, transparent 70%);
+  }
+}
