@@ -19,6 +19,23 @@ export default function HospitalMapEditor() {
     let dropType = null, dropColor = null, dropLabel = null;
     let bgImage = null, bgOpacity = 0.3;
     const GRID = 20;
+    const COMPACT_ZONE_TYPES = new Set(['exit_door', 'entry_door', 'aed_station', 'fire_ext', 'hazard']);
+
+    function getZoneMinSize(zone) {
+      if (COMPACT_ZONE_TYPES.has(zone?.type)) {
+        return { w: 20, h: 10 };
+      }
+
+      return { w: 60, h: 40 };
+    }
+
+    function getZoneDefaultSize(type) {
+      if (COMPACT_ZONE_TYPES.has(type)) {
+        return { w: 40, h: 20 };
+      }
+
+      return { w: 120, h: 60 };
+    }
 
     // ── Floor management ──────────────────────────────────────────────────────
     const LS_KEY = 'gridmapper_v1';
@@ -293,9 +310,10 @@ export default function HospitalMapEditor() {
       const mx = e.offsetX, my = e.offsetY;
       if (tool === 'draw' && drawStart) { drawPreview = { x: snap(mx), y: snap(my) }; render(); return; }
       if (resizing && selected?.w !== undefined) {
-        if (resizeHandle.dir === 'se') { selected.w = Math.max(60, snap(mx) - selected.x); selected.h = Math.max(40, snap(my) - selected.y); }
-        else if (resizeHandle.dir === 'e') { selected.w = Math.max(60, snap(mx) - selected.x); }
-        else if (resizeHandle.dir === 's') { selected.h = Math.max(40, snap(my) - selected.y); }
+        const minSize = getZoneMinSize(selected);
+        if (resizeHandle.dir === 'se') { selected.w = Math.max(minSize.w, snap(mx) - selected.x); selected.h = Math.max(minSize.h, snap(my) - selected.y); }
+        else if (resizeHandle.dir === 'e') { selected.w = Math.max(minSize.w, snap(mx) - selected.x); }
+        else if (resizeHandle.dir === 's') { selected.h = Math.max(minSize.h, snap(my) - selected.y); }
         showProps(); render(); return;
       }
       if (dragging && selected) {
@@ -345,7 +363,16 @@ export default function HospitalMapEditor() {
         const cam = { x: mx, y: my, angle: 0, label: 'Cam ' + (cameras.length + 1) };
         cameras.push(cam); selected = cam;
       } else {
-        const z = { type: dropType, color: dropColor, label: dropLabel, x: mx - 60, y: my - 30, w: 120, h: 60 };
+        const defaultSize = getZoneDefaultSize(dropType);
+        const z = {
+          type: dropType,
+          color: dropColor,
+          label: dropLabel,
+          x: mx - defaultSize.w / 2,
+          y: my - defaultSize.h / 2,
+          w: defaultSize.w,
+          h: defaultSize.h,
+        };
         zones.push(z); selected = z;
       }
       showProps(); render();
