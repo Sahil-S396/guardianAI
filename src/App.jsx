@@ -30,34 +30,14 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-function PublicRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-navy flex items-center justify-center">
-        <div className="spinner" />
-      </div>
-    );
-  }
-  if (user) return <Navigate to="/dashboard" replace />;
-  return children;
-}
-
 export default function App() {
   return (
     <AuthProvider>
       <HospitalProvider>
         <BrowserRouter>
           <Routes>
-            {/* Public */}
-            <Route
-              path="/"
-              element={
-                <PublicRoute>
-                  <LandingPage />
-                </PublicRoute>
-              }
-            />
+            {/* Always show landing page first — no auto-redirect for authenticated users */}
+            <Route path="/" element={<LandingPage />} />
 
             {/* Protected — inside AppLayout (sidebar + topbar) */}
             <Route
