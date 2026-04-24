@@ -65,3 +65,77 @@ Return ONLY valid JSON with this exact structure:
     };
   }
 }
+
+export async function analyzeFloorPlanImage(base64Image, mimeType = 'image/jpeg') {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Missing VITE_GEMINI_API_KEY');
+  }
+
+  const prompt = `You are analyzing a hospital floor plan image. Identify all visible rooms, zones, and areas.
+
+Return ONLY valid JSON matching this schema:
+[
+  {
+    "type": "icu",
+    "label": "ICU",
+    "color": "#D85A30",
+    "x": 40,
+    "y": 40,
+    "w": 160,
+    "h": 100
+  }
+]
+
+Rules:
+- The source coordinate system is 600 by 420.
+- Allowed types/colors: icu/#D85A30, emergency/#E24B4A, ward/#378ADD, surgery/#7F77DD, corridor/#888780, reception/#1D9E75, lab/#BA7517, pharmacy/#D4537E, stairwell/#444441, other/#888780
+- Use specific human-readable labels like "Room 101" or "ICU Bay A".
+- Corridors should usually be long thin rectangles.
+- Minimum size is w=80 and h=50.
+- Maximum 20 zones.
+- Avoid heavy overlap.
+- x, y, w, h must be integers.
+- Do not include markdown fences or explanation.`;
+
+  const response = await fetch(GEMINI_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType,
+              data: base64Image,
+            },
+          },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1200,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gemini image analysis failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!rawText) {
+    throw new Error('Gemini returned an empty response');
+  }
+
+  const parsed = JSON.parse(rawText);
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('Gemini response was not an array');
+  }
+
+  return parsed;
+}

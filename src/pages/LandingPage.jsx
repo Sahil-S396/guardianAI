@@ -3,22 +3,34 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function LandingPage() {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, authError, authDebug, clearAuthError } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleGoogleSignIn = async () => {
+    clearAuthError();
     setError('');
     setLoading(true);
+
+    let redirected = false;
+
     try {
-      await signInWithGoogle();
+      const result = await signInWithGoogle();
+      redirected = Boolean(result?.redirected);
+
+      if (redirected) {
+        return;
+      }
+
       navigate('/dashboard');
     } catch (err) {
-      setError('Sign-in failed. Please try again.');
+      setError(err?.userMessage || authError || 'Sign-in failed. Please try again.');
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!redirected) {
+        setLoading(false);
+      }
     }
   };
 
@@ -91,8 +103,16 @@ export default function LandingPage() {
           {loading ? 'Signing in…' : 'Continue with Google'}
         </button>
 
-        {error && (
-          <p className="mt-4 text-sm text-accent-red animate-fade-in">{error}</p>
+        {(error || authError) && (
+          <div className="mt-4 max-w-xl animate-fade-in">
+            <p className="text-sm text-accent-red">{error || authError}</p>
+            {authDebug && (
+              <p className="mt-2 text-xs text-white/45 break-words">
+                Firebase: <span className="font-mono">{authDebug.code}</span>
+                {authDebug.message ? ` - ${authDebug.message}` : ''}
+              </p>
+            )}
+          </div>
         )}
 
         {/* Feature pills */}
