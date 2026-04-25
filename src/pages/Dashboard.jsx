@@ -3,6 +3,7 @@ import { collection, query, orderBy, onSnapshot, where, limit } from 'firebase/f
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import AlertCard from '../components/AlertCard';
+import { getFloorTileLabel, sortFloorLabels } from '../utils/floorPublishing';
 
 const ALERT_LIMIT = 20;
 
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [publishedFloors, setPublishedFloors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -59,23 +61,42 @@ export default function Dashboard() {
     return unsub;
   }, [hospitalId]);
 
-  const activeAlerts = alerts.filter((a) => a.status === 'active');
-  const escalatedAlerts = alerts.filter((a) => a.status === 'escalated');
-  const criticalRooms = rooms.filter((r) => r.status === 'critical');
+  useEffect(() => {
+    if (!hospitalId) return;
+    const q = query(collection(db, `hospitals/${hospitalId}/floorMaps`));
+    const unsub = onSnapshot(q, (snap) => {
+      setPublishedFloors(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+    });
+    return unsub;
+  }, [hospitalId]);
+
+  const publishedFloorSet = new Set(
+    publishedFloors.map((floorDoc) => String(floorDoc.floor ?? floorDoc.floorNumber ?? ''))
+  );
+  const visibleRooms = publishedFloorSet.size > 0
+    ? rooms.filter((room) => publishedFloorSet.has(String(room.floor)))
+    : rooms;
+
+  const visibleAlerts = alerts.filter((a) => !a.archivedAt);
+  const activeAlerts = visibleAlerts.filter((a) => a.status === 'active');
+  const escalatedAlerts = visibleAlerts.filter((a) => a.status === 'escalated');
+  const criticalRooms = visibleRooms.filter((r) => r.status === 'critical');
   const availableStaff = staff.filter((s) => s.available);
 
   const filteredAlerts = filterStatus === 'all'
-    ? alerts
-    : alerts.filter((a) => a.status === filterStatus);
+    ? visibleAlerts
+    : visibleAlerts.filter((a) => a.status === filterStatus);
 
   const drillAlerts = filteredAlerts.filter((a) => a.isDrill);
   const realAlerts = filteredAlerts.filter((a) => !a.isDrill);
 
   // Floor map data
-  const floors = [...new Set(rooms.map((r) => r.floor))].sort();
+  const floors = [...new Set(visibleRooms.map((r) => r.floor))].sort(sortFloorLabels);
   const floorMap = floors.map((floor) => ({
     floor,
-    rooms: rooms.filter((r) => r.floor === floor),
+    rooms: visibleRooms
+      .filter((r) => r.floor === floor)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.name || '').localeCompare(String(b.name || ''))),
   }));
 
   return (
@@ -99,7 +120,7 @@ export default function Dashboard() {
           label="Critical Rooms"
           value={criticalRooms.length}
           color={criticalRooms.length > 0 ? 'text-orange-400' : 'text-white'}
-          sub={`of ${rooms.length} total rooms`}
+          sub={`of ${visibleRooms.length} total rooms`}
         />
         <StatCard
           label="Staff Available"
@@ -132,6 +153,8 @@ export default function Dashboard() {
               <option value="active">Active</option>
               <option value="acknowledged">Acknowledged</option>
               <option value="escalated">Escalated</option>
+              <option value="contained">Contained</option>
+              <option value="resolved">Resolved</option>
             </select>
           </div>
 
@@ -167,13 +190,13 @@ export default function Dashboard() {
         <div className="glass-card p-5">
           <div className="section-header">
             <h2 className="section-title">Floor Map</h2>
-            <span className="text-xs text-white/40">{rooms.length} rooms</span>
+            <span className="text-xs text-white/40">{visibleRooms.length} rooms</span>
           </div>
 
           {floorMap.length === 0 ? (
             <div className="text-center py-10">
-              <p className="text-sm text-white/30">No rooms seeded yet</p>
-              <p className="text-xs text-white/20 mt-1">Run the seed script to populate</p>
+              <p className="text-sm text-white/30">No published floor data yet</p>
+              <p className="text-xs text-white/20 mt-1">Validate a floor in Map Editor and add it to the system.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -191,7 +214,7 @@ export default function Dashboard() {
                             'bg-accent-red/30 border-accent-red/40 text-accent-red animate-pulse'}
                         `}
                       >
-                        {room.name?.replace(/[^0-9]/g, '') || room.id.slice(0, 3)}
+                        {getFloorTileLabel(room)}
                       </div>
                     ))}
                   </div>

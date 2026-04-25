@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, serverTimestamp, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,7 +8,7 @@ import { formatTimestamp, formatDistanceToNow } from '../utils/time';
 
 export default function AlertDetail() {
   const { alertId } = useParams();
-  const { hospitalId, drillMode } = useHospital();
+  const { hospitalId } = useHospital();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -17,8 +17,10 @@ export default function AlertDetail() {
   const [loading, setLoading] = useState(true);
   const [acknowledging, setAcknowledging] = useState(false);
   const [escalating, setEscalating] = useState(false);
+  const [containing, setContaining] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
-  // Real-time alert listener
   useEffect(() => {
     if (!alertId || !hospitalId) return;
     const ref = doc(db, `hospitals/${hospitalId}/alerts`, alertId);
@@ -31,7 +33,6 @@ export default function AlertDetail() {
     return unsub;
   }, [alertId, hospitalId]);
 
-  // Fetch room details
   useEffect(() => {
     if (!alert?.roomId || !hospitalId) return;
     const fetchRoom = async () => {
@@ -44,12 +45,19 @@ export default function AlertDetail() {
     fetchRoom();
   }, [alert?.roomId, hospitalId]);
 
+  const updateAlertLifecycle = async (alertPatch, roomPatch) => {
+    await updateDoc(doc(db, `hospitals/${hospitalId}/alerts`, alertId), alertPatch);
+    if (alert?.roomId && roomPatch) {
+      await updateDoc(doc(db, `hospitals/${hospitalId}/rooms`, alert.roomId), roomPatch);
+    }
+  };
+
   const handleAcknowledge = async () => {
     setAcknowledging(true);
     try {
-      await updateDoc(doc(db, `hospitals/${hospitalId}/alerts`, alertId), {
+      await updateAlertLifecycle({
         status: 'acknowledged',
-        acknowledgedBy: user?.uid,
+        acknowledgedBy: user?.uid || null,
         acknowledgedAt: serverTimestamp(),
       });
     } catch (err) {
@@ -62,7 +70,7 @@ export default function AlertDetail() {
   const handleEscalate = async () => {
     setEscalating(true);
     try {
-      await updateDoc(doc(db, `hospitals/${hospitalId}/alerts`, alertId), {
+      await updateAlertLifecycle({
         status: 'escalated',
         escalatedAt: serverTimestamp(),
       });
@@ -73,11 +81,64 @@ export default function AlertDetail() {
     }
   };
 
+  const handleContain = async () => {
+    setContaining(true);
+    try {
+      await updateAlertLifecycle(
+        {
+          status: 'contained',
+          severity: 'medium',
+          containedAt: serverTimestamp(),
+          containedBy: user?.uid || null,
+        },
+        { status: 'alert' }
+      );
+    } catch (err) {
+      console.error('Contain failed:', err);
+    } finally {
+      setContaining(false);
+    }
+  };
+
+  const handleResolve = async () => {
+    setResolving(true);
+    try {
+      await updateAlertLifecycle(
+        {
+          status: 'resolved',
+          severity: 'low',
+          resolvedAt: serverTimestamp(),
+          resolvedBy: user?.uid || null,
+        },
+        { status: 'clear' }
+      );
+    } catch (err) {
+      console.error('Resolve failed:', err);
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    setArchiving(true);
+    try {
+      await updateDoc(doc(db, `hospitals/${hospitalId}/alerts`, alertId), {
+        archivedAt: serverTimestamp(),
+        archivedBy: user?.uid || null,
+      });
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Archive failed:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <div className="spinner" />
-        <p className="text-white/40 text-sm">Loading alert…</p>
+        <p className="text-white/40 text-sm">Loading alert...</p>
       </div>
     );
   }
@@ -91,16 +152,18 @@ export default function AlertDetail() {
     );
   }
 
-  const isfire = alert.type === 'fire';
-  const accentClass = alert.isDrill ? 'text-accent-amber' : isfire ? 'text-accent-red' : 'text-accent-amber';
-  const borderClass = alert.isDrill ? 'border-accent-amber/30' : isfire ? 'border-accent-red/30' : 'border-accent-amber/30';
-  const bgGlow = alert.isDrill ? 'bg-drill-glow' : isfire ? 'bg-alert-glow' : '';
+  const isFire = alert.type === 'fire';
+  const accentClass = alert.isDrill ? 'text-accent-amber' : isFire ? 'text-accent-red' : 'text-accent-amber';
+  const borderClass = alert.isDrill ? 'border-accent-amber/30' : isFire ? 'border-accent-red/30' : 'border-accent-amber/30';
+  const bgGlow = alert.isDrill ? 'bg-drill-glow' : isFire ? 'bg-alert-glow' : '';
   const gemini = alert.geminiResponse;
   const alertTime = alert.createdAt?.toDate?.() || new Date(alert.createdAt?.seconds * 1000 || Date.now());
+  const canEscalate = !['escalated', 'resolved'].includes(alert.status);
+  const canContain = ['active', 'acknowledged', 'escalated'].includes(alert.status);
+  const canResolve = alert.status !== 'resolved';
 
   return (
     <div className={`space-y-6 animate-fade-in ${bgGlow}`}>
-      {/* Back navigation */}
       <button
         id="alert-detail-back-btn"
         onClick={() => navigate(-1)}
@@ -112,20 +175,14 @@ export default function AlertDetail() {
         Back
       </button>
 
-      {/* Alert header */}
       <div className={`glass-card p-6 border ${borderClass}`}>
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-3 flex-wrap mb-2">
               <span className={`text-2xl font-black uppercase ${accentClass}`}>
-                {alert.isDrill ? '🎯 [DRILL] ' : ''}{alert.type} ALERT
+                {alert.isDrill ? '[DRILL] ' : ''}{alert.type} ALERT
               </span>
               <StatusBadge status={alert.status} />
-              {alert.isDrill && (
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-accent-amber/20 text-accent-amber border border-accent-amber/30">
-                  Drill — No Real Emergency
-                </span>
-              )}
             </div>
             <p className="text-sm text-white/60">
               Alert ID: <span className="font-mono text-white/40 text-xs">{alertId}</span>
@@ -139,19 +196,17 @@ export default function AlertDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main info */}
         <div className="lg:col-span-2 space-y-5">
-          {/* Room + location */}
           <div className="glass-card p-5">
             <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">Location</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: 'Room', value: room?.name || alert.roomId },
-                { label: 'Zone', value: room?.zone || '—' },
-                { label: 'Floor', value: room?.floor || '—' },
-                { label: 'Room Type', value: room?.type || '—' },
+                { label: 'Zone', value: room?.zone || '-' },
+                { label: 'Floor', value: room?.floor || '-' },
+                { label: 'Room Type', value: room?.type || '-' },
                 { label: 'Event Type', value: alert.type?.toUpperCase() },
-                { label: 'Severity', value: gemini?.severity?.toUpperCase() || alert.severity?.toUpperCase() || '—' },
+                { label: 'Severity', value: gemini?.severity?.toUpperCase() || alert.severity?.toUpperCase() || '-' },
               ].map(({ label, value }) => (
                 <div key={label}>
                   <p className="text-xs text-white/40">{label}</p>
@@ -161,7 +216,6 @@ export default function AlertDetail() {
             </div>
           </div>
 
-          {/* Gemini AI Response */}
           {gemini ? (
             <div className="glass-card p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -177,8 +231,7 @@ export default function AlertDetail() {
               </div>
 
               <div className="space-y-4">
-                {/* Immediate action */}
-                <div className={`p-4 rounded-lg border ${isfire || alert.isDrill ? 'bg-accent-red/5 border-accent-red/20' : 'bg-accent-amber/5 border-accent-amber/20'}`}>
+                <div className={`p-4 rounded-lg border ${isFire || alert.isDrill ? 'bg-accent-red/5 border-accent-red/20' : 'bg-accent-amber/5 border-accent-amber/20'}`}>
                   <p className="text-xs text-white/50 uppercase tracking-wider mb-1">Immediate Action</p>
                   <p className="text-sm text-white font-medium">{gemini.immediateAction}</p>
                 </div>
@@ -195,7 +248,7 @@ export default function AlertDetail() {
                   <div>
                     <p className="text-xs text-white/40">Evacuation Required</p>
                     <p className={`text-sm font-semibold mt-0.5 ${gemini.evacuationRequired ? 'text-accent-red' : 'text-emerald-400'}`}>
-                      {gemini.evacuationRequired ? 'YES — Evacuate Now' : 'No'}
+                      {gemini.evacuationRequired ? 'YES - Evacuate Now' : 'No'}
                     </p>
                   </div>
                   <div>
@@ -212,14 +265,12 @@ export default function AlertDetail() {
           ) : (
             <div className="glass-card p-5 flex items-center gap-3">
               <div className="spinner w-5 h-5" />
-              <p className="text-sm text-white/50">Gemini AI is processing this alert…</p>
+              <p className="text-sm text-white/50">Gemini AI is processing this alert...</p>
             </div>
           )}
         </div>
 
-        {/* Right: Escalation chain + Actions */}
         <div className="space-y-4">
-          {/* Actions */}
           <div className="glass-card p-5">
             <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">Actions</h2>
             <div className="space-y-2">
@@ -230,63 +281,98 @@ export default function AlertDetail() {
                   disabled={acknowledging}
                   className="btn-secondary w-full justify-center disabled:opacity-50"
                 >
-                  {acknowledging ? <div className="spinner w-4 h-4" /> : null}
-                  {acknowledging ? 'Acknowledging…' : '✓ Acknowledge Alert'}
+                  {acknowledging ? 'Acknowledging...' : 'Acknowledge Alert'}
                 </button>
               )}
-              {alert.status !== 'escalated' && (
+              {canEscalate && (
                 <button
                   id="alert-escalate-btn"
                   onClick={handleEscalate}
                   disabled={escalating}
                   className="btn-danger w-full justify-center disabled:opacity-50"
                 >
-                  {escalating ? 'Escalating…' : '⬆ Escalate Alert'}
+                  {escalating ? 'Escalating...' : 'Escalate Alert'}
                 </button>
               )}
-              {alert.status === 'acknowledged' && (
-                <p className="text-center text-xs text-emerald-400">Alert acknowledged</p>
+              {canContain && (
+                <button
+                  id="alert-contain-btn"
+                  onClick={handleContain}
+                  disabled={containing}
+                  className="btn-secondary w-full justify-center disabled:opacity-50"
+                >
+                  {containing ? 'Marking Contained...' : 'Fire Controlled - Lower Priority'}
+                </button>
               )}
-              {alert.status === 'escalated' && (
-                <p className="text-center text-xs text-purple-400">Alert escalated to admin</p>
+              {canResolve && (
+                <button
+                  id="alert-resolve-btn"
+                  onClick={handleResolve}
+                  disabled={resolving}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-semibold transition hover:bg-emerald-500/15 disabled:opacity-50"
+                >
+                  {resolving ? 'Resolving...' : 'Resolve And Clear Area'}
+                </button>
+              )}
+              {alert.status === 'contained' && (
+                <p className="text-center text-xs text-accent-amber">Incident contained. Room remains under observation.</p>
+              )}
+              {alert.status === 'resolved' && (
+                <p className="text-center text-xs text-emerald-400">Incident resolved. Room cleared.</p>
+              )}
+              {alert.status === 'resolved' && !alert.archivedAt && (
+                <button
+                  id="alert-archive-btn"
+                  onClick={handleArchive}
+                  disabled={archiving}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-white/15 bg-white/5 text-white/70 font-semibold transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  {archiving ? 'Removing...' : 'Remove Alert From Feed'}
+                </button>
               )}
             </div>
           </div>
 
-          {/* Escalation chain timeline */}
           <div className="glass-card p-5">
             <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">Escalation Chain</h2>
             <div className="space-y-3">
-              <TimelineItem
-                step="1"
-                label="Alert Triggered"
-                time={formatTimestamp(alert.createdAt)}
-                done
-              />
+              <TimelineItem step="1" label="Alert Triggered" time={formatTimestamp(alert.createdAt)} done />
               <TimelineItem
                 step="2"
                 label="Gemini AI Triage"
-                time={gemini ? 'Completed' : 'In progress…'}
+                time={gemini ? 'Completed' : 'In progress...'}
                 done={!!gemini}
                 inProgress={!gemini}
               />
               <TimelineItem
                 step="3"
                 label="Staff Notified"
-                time={alert.geminiResponse ? gemini?.suggestedResponder : '—'}
+                time={alert.geminiResponse ? gemini?.suggestedResponder : '-'}
                 done={!!gemini}
               />
               <TimelineItem
                 step="4"
                 label="Acknowledged"
                 time={formatTimestamp(alert.acknowledgedAt)}
-                done={['acknowledged', 'escalated'].includes(alert.status)}
+                done={['acknowledged', 'escalated', 'contained', 'resolved'].includes(alert.status)}
               />
               <TimelineItem
                 step="5"
                 label="Escalated"
                 time={formatTimestamp(alert.escalatedAt)}
-                done={alert.status === 'escalated'}
+                done={['escalated', 'contained', 'resolved'].includes(alert.status)}
+              />
+              <TimelineItem
+                step="6"
+                label="Contained"
+                time={formatTimestamp(alert.containedAt)}
+                done={['contained', 'resolved'].includes(alert.status)}
+              />
+              <TimelineItem
+                step="7"
+                label="Resolved"
+                time={formatTimestamp(alert.resolvedAt)}
+                done={alert.status === 'resolved'}
               />
             </div>
           </div>
@@ -301,6 +387,8 @@ function StatusBadge({ status }) {
     active: 'badge-active',
     acknowledged: 'badge-acknowledged',
     escalated: 'badge-escalated',
+    contained: 'badge-alert',
+    resolved: 'badge-clear',
   };
   return <span className={map[status] || 'badge-active'}>{status}</span>;
 }

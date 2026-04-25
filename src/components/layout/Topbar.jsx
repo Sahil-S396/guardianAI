@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useHospital } from '../../contexts/HospitalContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,11 +22,14 @@ export default function Topbar() {
   // Live active alert count
   useEffect(() => {
     if (!hospitalId) return;
-    const q = query(
-      collection(db, `hospitals/${hospitalId}/alerts`),
-      where('status', '==', 'active')
-    );
-    const unsub = onSnapshot(q, (snap) => setActiveAlertCount(snap.size));
+    const q = query(collection(db, `hospitals/${hospitalId}/alerts`));
+    const unsub = onSnapshot(q, (snap) => {
+      const openCount = snap.docs.filter((docSnap) => {
+        const data = docSnap.data();
+        return !data.archivedAt && data.status !== 'resolved';
+      }).length;
+      setActiveAlertCount(openCount);
+    });
     return unsub;
   }, [hospitalId]);
 
@@ -62,7 +65,7 @@ export default function Topbar() {
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent-red/10 border border-accent-red/30">
             <span className="glow-dot-red animate-ping-slow" />
             <span className="text-xs font-semibold text-accent-red">
-              {activeAlertCount} ACTIVE {activeAlertCount === 1 ? 'ALERT' : 'ALERTS'}
+              {activeAlertCount} OPEN {activeAlertCount === 1 ? 'ALERT' : 'ALERTS'}
             </span>
           </div>
         )}
