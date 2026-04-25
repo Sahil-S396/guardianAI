@@ -1,7 +1,13 @@
 import React, { useEffect } from 'react';
+import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore';
+import { db } from '../firebase';
 import { analyzeFloorPlanImage } from '../gemini';
+import { useHospital } from '../contexts/HospitalContext';
+import { buildSystemRoomsFromFloor } from '../utils/floorPublishing';
 
 export default function HospitalMapEditor() {
+  const { hospitalId } = useHospital();
+
   useEffect(() => {
 
     // ── Init canvas refs ─────────────────────────────────────────────────────
@@ -19,9 +25,25 @@ export default function HospitalMapEditor() {
     let dropType = null, dropColor = null, dropLabel = null;
     let bgImage = null, bgOpacity = 0.3;
     const GRID = 20;
+    const COMPACT_ZONE_TYPES = new Set(['exit_door', 'entry_door', 'aed_station', 'fire_ext', 'hazard']);
+
+    function getZoneMinSize(zone) {
+      if (COMPACT_ZONE_TYPES.has(zone?.type)) {
+        return { w: 20, h: 10 };
+      }
+
+      return { w: 60, h: 40 };
+    }
+
+    function getZoneDefaultSize(type) {
+      if (COMPACT_ZONE_TYPES.has(type)) {
+        return { w: 40, h: 20 };
+      }
+
+      return { w: 120, h: 60 };
+    }
 
     // ── Floor management ──────────────────────────────────────────────────────
-    const LS_KEY = 'gridmapper_v1';
     let floors = { 1: { zones: [], cameras: [], walls: [] } };
     let currentFloor = 1;
 
@@ -75,11 +97,26 @@ export default function HospitalMapEditor() {
 
     // ── Auto-save ─────────────────────────────────────────────────────────────
     let _autoSaveTimer = null;
+    let _autoSaveWriteId = 0;
 
-    function autoSave() {
+    async function autoSave() {
       saveCurrentFloor();
-      try { localStorage.setItem(LS_KEY, JSON.stringify({ floors, currentFloor })); } catch (e) { }
-      flashAutosave();
+      if (!hospitalId) return;
+
+      const writeId = ++_autoSaveWriteId;
+      try {
+        await setDoc(doc(db, `hospitals/${hospitalId}/meta`, 'map-editor-draft'), {
+          floors,
+          currentFloor,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+
+        if (writeId === _autoSaveWriteId) {
+          flashAutosave();
+        }
+      } catch (e) {
+        console.error('Map draft auto-save failed:', e);
+      }
     }
 
     function flashAutosave() {
@@ -90,11 +127,12 @@ export default function HospitalMapEditor() {
       _autoSaveTimer = setTimeout(() => { el.style.opacity = '0'; }, 2200);
     }
 
-    function tryRestoreFromStorage() {
+    async function restoreDraftFromCloud() {
+      if (!hospitalId) return;
       try {
-        const raw = localStorage.getItem(LS_KEY);
-        if (!raw) return;
-        const saved = JSON.parse(raw);
+        const snap = await getDoc(doc(db, `hospitals/${hospitalId}/meta`, 'map-editor-draft'));
+        if (!snap.exists()) return;
+        const saved = snap.data();
         if (saved && saved.floors) {
           floors = saved.floors;
           currentFloor = saved.currentFloor || 1;
@@ -293,9 +331,10 @@ export default function HospitalMapEditor() {
       const mx = e.offsetX, my = e.offsetY;
       if (tool === 'draw' && drawStart) { drawPreview = { x: snap(mx), y: snap(my) }; render(); return; }
       if (resizing && selected?.w !== undefined) {
-        if (resizeHandle.dir === 'se') { selected.w = Math.max(60, snap(mx) - selected.x); selected.h = Math.max(40, snap(my) - selected.y); }
-        else if (resizeHandle.dir === 'e') { selected.w = Math.max(60, snap(mx) - selected.x); }
-        else if (resizeHandle.dir === 's') { selected.h = Math.max(40, snap(my) - selected.y); }
+        const minSize = getZoneMinSize(selected);
+        if (resizeHandle.dir === 'se') { selected.w = Math.max(minSize.w, snap(mx) - selected.x); selected.h = Math.max(minSize.h, snap(my) - selected.y); }
+        else if (resizeHandle.dir === 'e') { selected.w = Math.max(minSize.w, snap(mx) - selected.x); }
+        else if (resizeHandle.dir === 's') { selected.h = Math.max(minSize.h, snap(my) - selected.y); }
         showProps(); render(); return;
       }
       if (dragging && selected) {
@@ -345,7 +384,16 @@ export default function HospitalMapEditor() {
         const cam = { x: mx, y: my, angle: 0, label: 'Cam ' + (cameras.length + 1) };
         cameras.push(cam); selected = cam;
       } else {
-        const z = { type: dropType, color: dropColor, label: dropLabel, x: mx - 60, y: my - 30, w: 120, h: 60 };
+        const defaultSize = getZoneDefaultSize(dropType);
+        const z = {
+          type: dropType,
+          color: dropColor,
+          label: dropLabel,
+          x: mx - defaultSize.w / 2,
+          y: my - defaultSize.h / 2,
+          w: defaultSize.w,
+          h: defaultSize.h,
+        };
         zones.push(z); selected = z;
       }
       showProps(); render();
@@ -469,6 +517,90 @@ export default function HospitalMapEditor() {
       reader.readAsText(file);
     };
 
+    function setPublishUiState({ disabled = false, busy = false, message = '' } = {}) {
+      const publishBtn = document.getElementById('hme-publish-floor-btn');
+      const publishStatus = document.getElementById('hme-publish-status');
+
+      if (publishBtn) {
+        publishBtn.disabled = disabled || busy;
+        publishBtn.textContent = busy ? 'Adding Floor...' : `Add Floor ${currentFloor} To System`;
+      }
+
+      if (publishStatus) {
+        publishStatus.textContent = message;
+      }
+    }
+
+    async function publishCurrentFloorToSystem() {
+      if (!hospitalId) {
+        showToast('Could not publish without a hospital ID.', true);
+        return;
+      }
+
+      saveCurrentFloor();
+      const floorNumber = currentFloor;
+      const currentFloorData = floorData(floorNumber);
+      const systemRooms = buildSystemRoomsFromFloor(floorNumber, currentFloorData);
+
+      try {
+        setPublishUiState({
+          busy: true,
+          message: 'Replacing this floor in the live system...',
+        });
+
+        const batch = writeBatch(db);
+        const roomsCollection = collection(db, `hospitals/${hospitalId}/rooms`);
+        const floorMapRef = doc(db, `hospitals/${hospitalId}/floorMaps`, `floor-${floorNumber}`);
+        const existingRoomsSnap = await getDocs(
+          query(roomsCollection, where('floor', '==', String(floorNumber)))
+        );
+
+        existingRoomsSnap.forEach((roomDoc) => {
+          batch.delete(roomDoc.ref);
+        });
+
+        batch.set(floorMapRef, {
+          floor: String(floorNumber),
+          floorNumber,
+          zones: currentFloorData.zones || [],
+          cameras: currentFloorData.cameras || [],
+          walls: currentFloorData.walls || [],
+          roomCount: systemRooms.length,
+          source: 'map-editor',
+          publishedAt: serverTimestamp(),
+        }, { merge: true });
+
+        systemRooms.forEach((room) => {
+          const roomRef = doc(db, `hospitals/${hospitalId}/rooms`, room.id);
+          batch.set(roomRef, {
+            ...room,
+            publishedAt: serverTimestamp(),
+          });
+        });
+
+        await batch.commit();
+
+        setPublishUiState({
+          message: `Floor ${floorNumber} is now live with ${systemRooms.length} mapped room(s).`,
+        });
+        showToast(`Added Floor ${floorNumber} to the live system.`);
+      } catch (err) {
+        console.error('Failed to publish floor:', err);
+        setPublishUiState({
+          message: 'Could not add this floor right now. Please try again.',
+        });
+        showToast('Could not add this floor to the system.', true);
+      } finally {
+        const publishBtn = document.getElementById('hme-publish-floor-btn');
+        if (publishBtn) {
+          publishBtn.disabled = false;
+          publishBtn.textContent = `Add Floor ${currentFloor} To System`;
+        }
+      }
+    }
+
+    window._hme_publishFloor = publishCurrentFloorToSystem;
+
     // ── Validate ───────────────────────────────────────────────────────────────
     window._hme_validateMap = function () {
       saveCurrentFloor();
@@ -506,6 +638,7 @@ export default function HospitalMapEditor() {
       const reds = results.filter(r => r.level === 'red').length;
       const yellows = results.filter(r => r.level === 'yellow').length;
       const greens = results.filter(r => r.level === 'green').length;
+      const publishableRooms = buildSystemRoomsFromFloor(currentFloor, floorData(currentFloor));
       let html = `<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:14px;">🚨 ${reds} critical &nbsp;·&nbsp; ⚠️ ${yellows} warning(s) &nbsp;·&nbsp; ✅ ${greens} passing</div>`;
       results.forEach(r => {
         const bg = r.level === 'red' ? 'rgba(239,68,68,0.1)' : r.level === 'yellow' ? 'rgba(245,158,11,0.1)' : 'rgba(34,197,94,0.08)';
@@ -513,6 +646,12 @@ export default function HospitalMapEditor() {
         html += `<div style="display:flex;gap:10px;padding:9px 12px;border-radius:8px;margin-bottom:7px;font-size:13px;background:${bg};border:0.5px solid ${border};color:rgba(255,255,255,0.85);"><span>${r.icon}</span><span>${r.text}</span></div>`;
       });
       document.getElementById('hme-validate-content').innerHTML = html;
+      setPublishUiState({
+        message: publishableRooms.length > 0
+          ? `Floor ${currentFloor} will publish ${publishableRooms.length} mapped room(s) and replace any existing live data for this floor.`
+          : `Floor ${currentFloor} has no publishable mapped rooms yet. Add named zones like wards, labs, ICUs, or corridors first.`,
+        disabled: publishableRooms.length === 0,
+      });
       document.getElementById('hme-validate-modal').style.display = 'flex';
     };
 
@@ -631,10 +770,11 @@ Only output the JSON array.`;
     // ── Boot ───────────────────────────────────────────────────────────────────
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
-    tryRestoreFromStorage();
-    renderFloorTabs();
-    resize();
-    saveHistory();
+    restoreDraftFromCloud().finally(() => {
+      renderFloorTabs();
+      resize();
+      saveHistory();
+    });
 
     return () => {
       document.removeEventListener('keydown', keyHandler);
@@ -648,6 +788,7 @@ Only output the JSON array.`;
       delete window._hme_addFloor;
       delete window._hme_exportJSON;
       delete window._hme_importJSON;
+      delete window._hme_publishFloor;
       delete window._hme_validateMap;
       delete window._hme_openAIModal;
       delete window._hme_closeModal;
@@ -657,7 +798,7 @@ Only output the JSON array.`;
       delete window._hme_analyzeImage;
       delete window.selected_hme_obj;
     };
-  }, []);
+  }, [hospitalId]);
 
   const ZONE_TYPES = [
     { type: 'icu', color: '#D85A30', label: 'ICU' },
@@ -814,7 +955,19 @@ Only output the JSON array.`;
         <div style={{ background: '#0d1326', borderRadius: 14, border: '0.5px solid rgba(255,255,255,0.1)', width: 460, maxWidth: '95vw', padding: 28, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 18, color: 'white' }}>🔍 Map Validation Report</h2>
           <div id="hme-validate-content" />
-          <div style={{ marginTop: 18, textAlign: 'right' }}>
+          <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, border: '0.5px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
+            <p id="hme-publish-status" style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.58)', lineHeight: 1.5 }}>
+              Validate a mapped floor to see what will be added to the live system.
+            </p>
+          </div>
+          <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <button
+              id="hme-publish-floor-btn"
+              onClick={() => window._hme_publishFloor()}
+              style={{ fontSize: 13, padding: '6px 18px', borderRadius: 8, border: '0.5px solid rgba(34,197,94,0.45)', background: 'rgba(34,197,94,0.12)', color: '#86efac', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Add Floor To System
+            </button>
             <button onClick={() => document.getElementById('hme-validate-modal').style.display = 'none'} style={{ fontSize: 13, padding: '6px 18px', borderRadius: 8, border: '0.5px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }}>Close</button>
           </div>
         </div>

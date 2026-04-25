@@ -26,7 +26,6 @@ export default function RoomCard({ room }) {
   const [fallCountdown, setFallCountdown] = useState(null);
   const [triggering, setTriggering] = useState(null); // 'fire' | 'fall' | null
 
-  // Fall detection countdown
   useEffect(() => {
     if (fallCountdown === null) return;
     if (fallCountdown <= 0) {
@@ -59,7 +58,6 @@ export default function RoomCard({ room }) {
       const nearbyStaff = await fetchNearbyStaff();
       const secondsSinceTrigger = alertType === 'fall' ? FALL_COUNTDOWN_SECONDS : 0;
 
-      // Create alert doc in Firestore
       const newAlertRef = await addDoc(
         collection(db, `hospitals/${hospitalId}/alerts`),
         {
@@ -76,7 +74,10 @@ export default function RoomCard({ room }) {
         }
       );
 
-      // Call Gemini API asynchronously and update the doc
+      await updateDoc(doc(db, `hospitals/${hospitalId}/rooms`, room.id), {
+        status: alertType === 'fire' ? 'critical' : 'alert',
+      });
+
       callGeminiForAlert({
         roomName: room.name,
         zone: room.zone,
@@ -91,7 +92,6 @@ export default function RoomCard({ room }) {
         });
       });
 
-      // Auto-escalation: if status remains 'active' for 90 seconds, escalate
       if (!drillMode) {
         setTimeout(async () => {
           try {
@@ -115,47 +115,45 @@ export default function RoomCard({ room }) {
   }, [hospitalId, room, drillMode, user]);
 
   const handleFireTrigger = () => {
-    setFallCountdown(null); // cancel any pending fall
+    setFallCountdown(null);
     handleCreateAlert('fire');
   };
 
   const handleFallTrigger = () => {
-    if (fallCountdown !== null) {
-      // Reset countdown
-      setFallCountdown(FALL_COUNTDOWN_SECONDS);
-    } else {
-      setFallCountdown(FALL_COUNTDOWN_SECONDS);
-    }
+    setFallCountdown(FALL_COUNTDOWN_SECONDS);
   };
 
   const handleFallReset = () => {
     setFallCountdown(null);
   };
 
-  const accentColor = drillMode ? 'accent-amber' : 'accent-red';
+  const metaParts = [];
+  if (room.zone && room.zone !== room.name) {
+    metaParts.push(`Zone ${room.zone}`);
+  }
+  metaParts.push(`Floor ${room.floor}`);
+  if (room.type && room.type !== room.zone) {
+    metaParts.push(room.type);
+  }
 
   return (
     <div
       id={`room-card-${room.id}`}
       className={`glass-card p-4 flex flex-col gap-3 transition-all duration-300 ${statusColors[room.status] || ''} ${statusBg[room.status] || ''}`}
     >
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-white">{room.name}</h3>
-          <p className="text-xs text-white/50 mt-0.5">
-            Zone {room.zone} · Floor {room.floor} · {room.type}
-          </p>
+          <p className="text-xs text-white/50 mt-0.5">{metaParts.join(' · ')}</p>
         </div>
         <StatusBadge status={room.status} />
       </div>
 
-      {/* Fall countdown */}
       {fallCountdown !== null && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <p className="text-xs text-accent-amber font-semibold animate-blink">
-              ⚠ Fall detected — alerting in {fallCountdown}s
+              Fall detected - alerting in {fallCountdown}s
             </p>
             <button
               id={`room-${room.id}-fall-reset`}
@@ -174,7 +172,6 @@ export default function RoomCard({ room }) {
         </div>
       )}
 
-      {/* Trigger buttons */}
       <div className="flex gap-2 mt-auto">
         <button
           id={`room-${room.id}-fire-btn`}

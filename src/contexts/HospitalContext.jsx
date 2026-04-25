@@ -1,25 +1,33 @@
 import React, { createContext, useContext, useState } from 'react';
+import { useAuth } from './AuthContext';
 
 const HospitalContext = createContext(null);
 
-// Default hospital ID — in production you'd derive this from the authenticated user's profile
-export const HOSPITAL_ID = 'hospital-001';
+function buildHospitalId(user) {
+  if (!user?.uid) {
+    return null;
+  }
+
+  return `hospital-${user.uid}`;
+}
 
 export function HospitalProvider({ children }) {
+  const { user } = useAuth();
   const [drillMode, setDrillMode] = useState(false);
   const [selectedFloor, setSelectedFloor] = useState('all');
   const [selectedZone, setSelectedZone] = useState('all');
 
   return (
     <HospitalContext.Provider value={{
-      hospitalId: HOSPITAL_ID,
+      hospitalId: buildHospitalId(user),
       drillMode,
       setDrillMode,
       selectedFloor,
       setSelectedFloor,
       selectedZone,
       setSelectedZone,
-    }}>
+    }}
+    >
       {children}
     </HospitalContext.Provider>
   );

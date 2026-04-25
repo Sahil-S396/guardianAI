@@ -25,6 +25,8 @@ const statusBadge = {
   active: <span className="badge-active">Active</span>,
   acknowledged: <span className="badge-acknowledged">Acknowledged</span>,
   escalated: <span className="badge-escalated">Escalated</span>,
+  contained: <span className="badge-alert">Contained</span>,
+  resolved: <span className="badge-clear">Resolved</span>,
 };
 
 export default function AlertCard({ alert, isDrill }) {
@@ -58,7 +60,6 @@ export default function AlertCard({ alert, isDrill }) {
               <h3 className={`text-sm font-semibold ${color} capitalize`}>
                 {isDrill ? '🎯 [DRILL] ' : ''}{alert.type} Alert
               </h3>
-              {statusBadge[alert.status]}
             </div>
             <p className="text-xs text-white/60 mt-0.5 truncate">
               Room {alert.roomId} · {formatDistanceToNow(time)}
@@ -71,16 +72,19 @@ export default function AlertCard({ alert, isDrill }) {
           </div>
         </div>
 
-        {/* Right: severity */}
-        {alert.geminiResponse?.severity && (
-          <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-            alert.geminiResponse.severity === 'critical' ? 'bg-accent-red/20 text-accent-red' :
-            alert.geminiResponse.severity === 'high' ? 'bg-orange-500/20 text-orange-400' :
-            'bg-accent-amber/20 text-accent-amber'
-          }`}>
-            {alert.geminiResponse.severity}
-          </span>
-        )}
+        {/* Right: severity (active) or status badge (resolved) */}
+        {alert.status === 'resolved'
+          ? statusBadge['resolved']
+          : alert.geminiResponse?.severity && (
+              <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                alert.geminiResponse.severity === 'critical' ? 'bg-accent-red/20 text-accent-red' :
+                alert.geminiResponse.severity === 'high' ? 'bg-orange-500/20 text-orange-400' :
+                'bg-accent-amber/20 text-accent-amber'
+              }`}>
+                {alert.geminiResponse.severity}
+              </span>
+            )
+        }
       </div>
     </div>
   );
