@@ -16,7 +16,6 @@ export default function HospitalMapEditor() {
     const gridCanvas = document.getElementById('hme-grid-canvas');
     const gctx = gridCanvas.getContext('2d');
     const bgCanvas = document.getElementById('hme-bg-canvas');
-    const bgCtx = bgCanvas.getContext('2d');
     const wrap = document.getElementById('hme-canvas-wrap');
 
     let zones = [], cameras = [], walls = [], selected = null, tool = 'select';
@@ -193,10 +192,36 @@ export default function HospitalMapEditor() {
     document.addEventListener('keydown', keyHandler);
 
     // ── Canvas render ─────────────────────────────────────────────────────────
+    let zoomLevel = 1;
+    let panX = 0;
+    let panY = 0;
+    
+    function applyTransform() {
+      const zc = document.getElementById('hme-zoom-container');
+      if (zc) zc.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+    }
+
+    window._hme_zoom = function(dir) {
+      const oldZoom = zoomLevel;
+      zoomLevel = Math.max(0.2, Math.min(5, zoomLevel + (dir * 0.25)));
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      const r = zoomLevel / oldZoom;
+      panX = w/2 - (w/2 - panX) * r;
+      panY = h/2 - (h/2 - panY) * r;
+      applyTransform();
+    };
+
+    window._hme_resetZoom = function() {
+      zoomLevel = 1; panX = 0; panY = 0; applyTransform();
+    };
+
     function resize() {
       const w = wrap.clientWidth, h = wrap.clientHeight;
-      [canvas, gridCanvas, bgCanvas].forEach(c => { c.width = w; c.height = h; });
-      drawGrid(); drawBg(); render();
+      // When resizing, only reset canvas dimensions if they changed to avoid clearing
+      if (canvas.width !== w || canvas.height !== h) {
+        [canvas, gridCanvas].forEach(c => { c.width = w; c.height = h; });
+        drawGrid(); drawBg(); render();
+      }
     }
 
     function drawGrid() {
@@ -211,14 +236,22 @@ export default function HospitalMapEditor() {
     }
 
     function drawBg() {
-      bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
-      if (!bgImage) return;
-      bgCtx.globalAlpha = bgOpacity;
-      const scale = Math.min(bgCanvas.width / bgImage.width, bgCanvas.height / bgImage.height) * 0.95;
+      if (!bgImage) {
+        bgCanvas.style.display = 'none';
+        return;
+      }
+      bgCanvas.style.display = 'block';
+      bgCanvas.style.opacity = bgOpacity;
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      const scale = Math.min(w / bgImage.width, h / bgImage.height) * 0.95;
       const dw = bgImage.width * scale, dh = bgImage.height * scale;
-      const dx = (bgCanvas.width - dw) / 2, dy = (bgCanvas.height - dh) / 2;
-      bgCtx.drawImage(bgImage, dx, dy, dw, dh);
-      bgCtx.globalAlpha = 1;
+      const dx = (w - dw) / 2, dy = (h - dh) / 2;
+      bgCanvas.style.position = 'absolute';
+      bgCanvas.style.left = dx + 'px';
+      bgCanvas.style.top = dy + 'px';
+      bgCanvas.style.width = dw + 'px';
+      bgCanvas.style.height = dh + 'px';
+      bgCanvas.src = bgImage.src;
     }
 
     function setBgOpacity(v) {
@@ -309,8 +342,51 @@ export default function HospitalMapEditor() {
     }
 
     let _dragStartSnap = null;
+    let isMapPanning = false;
+    let lastPanMouse = null;
+    let isSpaceDown = false;
+
+    // Zoom via wheel
+    wrap.addEventListener('wheel', e => {
+      e.preventDefault();
+      const oldZoom = zoomLevel;
+      zoomLevel = Math.max(0.2, Math.min(5, zoomLevel - e.deltaY * 0.002));
+      const rect = wrap.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const r = zoomLevel / oldZoom;
+      panX = mx - (mx - panX) * r;
+      panY = my - (my - panY) * r;
+      applyTransform();
+    }, { passive: false });
+
+    // Pan via Space + Mouse or Middle Click
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') {
+        if (!isSpaceDown) {
+          isSpaceDown = true;
+          canvas.style.cursor = 'grab';
+        }
+        e.preventDefault();
+      }
+    });
+
+    document.addEventListener('keyup', e => {
+      if (e.code === 'Space') {
+        isSpaceDown = false;
+        if (!isMapPanning) canvas.style.cursor = tool === 'draw' ? 'crosshair' : 'default';
+      }
+    });
+
+    wrap.addEventListener('contextmenu', e => e.preventDefault());
 
     canvas.addEventListener('mousedown', e => {
+      if (isSpaceDown || e.button === 1 || e.button === 2) {
+        isMapPanning = true;
+        lastPanMouse = { x: e.clientX, y: e.clientY };
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+      
       const mx = e.offsetX, my = e.offsetY;
       if (tool === 'draw') { drawStart = { x: snap(mx), y: snap(my) }; return; }
       if (tool === 'camera') {
@@ -328,6 +404,13 @@ export default function HospitalMapEditor() {
     });
 
     canvas.addEventListener('mousemove', e => {
+      if (isMapPanning) {
+        panX += (e.clientX - lastPanMouse.x);
+        panY += (e.clientY - lastPanMouse.y);
+        lastPanMouse = { x: e.clientX, y: e.clientY };
+        applyTransform();
+        return;
+      }
       const mx = e.offsetX, my = e.offsetY;
       if (tool === 'draw' && drawStart) { drawPreview = { x: snap(mx), y: snap(my) }; render(); return; }
       if (resizing && selected?.w !== undefined) {
@@ -346,7 +429,13 @@ export default function HospitalMapEditor() {
       canvas.style.cursor = handle ? handle.dir + '-resize' : (hitCamera(mx, my) || hitZone(mx, my)) ? 'move' : tool === 'draw' ? 'crosshair' : 'default';
     });
 
-    canvas.addEventListener('mouseup', e => {
+    // We use window level mouseup so we don't get stuck if we drag out of canvas
+    const handleMouseUp = e => {
+      if (isMapPanning) {
+        isMapPanning = false;
+        canvas.style.cursor = isSpaceDown ? 'grab' : (tool === 'draw' ? 'crosshair' : 'default');
+        return;
+      }
       if (tool === 'draw' && drawStart) {
         const ex = snap(e.offsetX), ey = snap(e.offsetY);
         if (Math.hypot(ex - drawStart.x, ey - drawStart.y) > 10) {
@@ -363,8 +452,11 @@ export default function HospitalMapEditor() {
       }
       _dragStartSnap = null;
       dragging = false; resizing = false; resizeHandle = null;
-    });
-
+    };
+    
+    window.addEventListener('mouseup', handleMouseUp);
+    
+    // Additional event listener for the canvas dblclick so we don't break existing features
     canvas.addEventListener('dblclick', e => {
       const z = hitZone(e.offsetX, e.offsetY);
       if (z) {
@@ -373,6 +465,7 @@ export default function HospitalMapEditor() {
         showProps(); render();
       }
     });
+
 
     wrap.addEventListener('dragover', e => e.preventDefault());
     wrap.addEventListener('drop', e => {
@@ -674,6 +767,26 @@ export default function HospitalMapEditor() {
 
     // ── AI Modal ────────────────────────────────────────────────────────────────
     let uploadedBase64 = null, uploadedMimeType = null;
+    let _pendingAIResult = null; // Holds Gemini result before user confirms
+
+    // Zone type → internal type + color mapping
+    const TYPE_MAP = {
+      'ICU':                { type: 'icu',        color: '#D85A30' },
+      'Emergency':          { type: 'emergency',  color: '#E24B4A' },
+      'General Ward':       { type: 'ward',       color: '#378ADD' },
+      'Surgery':            { type: 'surgery',    color: '#7F77DD' },
+      'Corridor':           { type: 'corridor',   color: '#888780' },
+      'Reception':          { type: 'reception',  color: '#1D9E75' },
+      'Lab':                { type: 'lab',        color: '#BA7517' },
+      'Pharmacy':           { type: 'pharmacy',   color: '#D4537E' },
+      'Stairwell':          { type: 'stairwell',  color: '#444441' },
+      'Exit Door':          { type: 'exit_door',  color: '#00FF94' },
+      'Entry Door':         { type: 'entry_door', color: '#4FC3F7' },
+      'AED Station':        { type: 'aed_station',color: '#FF6B35' },
+      'Fire Extinguisher':  { type: 'fire_ext',   color: '#FF2D2D' },
+      'Hazard Point':       { type: 'hazard',     color: '#FFB800' },
+      'Camera':             { type: 'camera',     color: '#3b82f6' },
+    };
 
     window._hme_openAIModal = function () {
       document.getElementById('hme-ai-modal').style.display = 'flex';
@@ -682,12 +795,21 @@ export default function HospitalMapEditor() {
       document.getElementById('hme-ai-modal').style.display = 'none';
       uploadedBase64 = null;
       uploadedMimeType = null;
+      _pendingAIResult = null;
       const status = document.getElementById('hme-ai-status');
-      if (status) status.textContent = '';
+      if (status) { status.textContent = ''; status.style.color = 'rgba(255,255,255,0.5)'; }
       const preview = document.getElementById('hme-ai-preview');
       if (preview) preview.style.display = 'none';
+      const zonePreview = document.getElementById('hme-ai-zone-preview');
+      if (zonePreview) { zonePreview.style.display = 'none'; zonePreview.innerHTML = ''; }
+      const confirmRow = document.getElementById('hme-ai-confirm-row');
+      if (confirmRow) confirmRow.style.display = 'none';
+      const actionRow = document.getElementById('hme-ai-action-row');
+      if (actionRow) actionRow.style.display = 'flex';
       const btn = document.getElementById('hme-btn-analyze');
       if (btn) btn.disabled = true;
+      const cancelBtn = document.getElementById('hme-btn-cancel');
+      if (cancelBtn) cancelBtn.disabled = false;
     };
 
     const dropZone = document.getElementById('hme-drop-zone');
@@ -726,45 +848,250 @@ export default function HospitalMapEditor() {
     window._hme_setBgOpacity = setBgOpacity;
     window._hme_removeBg = removeBg;
 
+    // ── Instant JS-based layout generator (no AI needed) ──────────────────────
+    window._hme_generateLayout = function () {
+      const cw = canvas.width, ch = canvas.height;
+
+      // Build a realistic hospital layout scaled to canvas
+      const genZones = [
+        // Reception at entrance (bottom strip)
+        { type: 'reception', color: '#1D9E75', label: 'Main Reception',   x: 0,         y: ch - 90,   w: Math.round(cw * 0.28), h: 70 },
+        // Entry door at reception
+        { type: 'entry_door', color: '#4FC3F7', label: 'Main Entry',      x: Math.round(cw * 0.12), y: ch - 20, w: 60, h: 20 },
+        // Main corridor (horizontal center strip)
+        { type: 'corridor',  color: '#888780', label: 'Main Corridor',    x: 0,         y: Math.round(ch * 0.55), w: cw,  h: Math.round(ch * 0.12) },
+        // Left vertical corridor
+        { type: 'corridor',  color: '#888780', label: 'West Corridor',    x: Math.round(cw * 0.15), y: 0, w: Math.round(cw * 0.08), h: Math.round(ch * 0.56) },
+        // ICU bays (top-left)
+        { type: 'icu', color: '#D85A30', label: 'ICU Bay 1',              x: 0,         y: 0,         w: Math.round(cw * 0.15), h: Math.round(ch * 0.28) },
+        { type: 'icu', color: '#D85A30', label: 'ICU Bay 2',              x: 0,         y: Math.round(ch * 0.28), w: Math.round(cw * 0.15), h: Math.round(ch * 0.27) },
+        // Surgery suite (top, right of ICU corridor)
+        { type: 'surgery', color: '#7F77DD', label: 'Surgery Suite',      x: Math.round(cw * 0.23), y: 0, w: Math.round(cw * 0.22), h: Math.round(ch * 0.3) },
+        // General wards (top-right)
+        { type: 'ward', color: '#378ADD', label: 'General Ward A',        x: Math.round(cw * 0.45), y: 0, w: Math.round(cw * 0.28), h: Math.round(ch * 0.28) },
+        { type: 'ward', color: '#378ADD', label: 'General Ward B',        x: Math.round(cw * 0.73), y: 0, w: Math.round(cw * 0.27), h: Math.round(ch * 0.28) },
+        // Lab and pharmacy (mid-right, between corridor and wards)
+        { type: 'lab',   color: '#639922', label: 'Laboratory',           x: Math.round(cw * 0.23), y: Math.round(ch * 0.30), w: Math.round(cw * 0.22), h: Math.round(ch * 0.25) },
+        { type: 'pharmacy', color: '#D4537E', label: 'Pharmacy',          x: Math.round(cw * 0.45), y: Math.round(ch * 0.28), w: Math.round(cw * 0.22), h: Math.round(ch * 0.27) },
+        // Stairwell (far right)
+        { type: 'stairwell', color: '#444441', label: 'Stairwell A',      x: Math.round(cw * 0.9), y: Math.round(ch * 0.28), w: Math.round(cw * 0.1), h: Math.round(ch * 0.27) },
+        // Below corridor: more wards and emergency
+        { type: 'ward', color: '#378ADD', label: 'General Ward C',        x: 0,         y: Math.round(ch * 0.67), w: Math.round(cw * 0.32), h: Math.round(ch * 0.23) },
+        { type: 'ward', color: '#378ADD', label: 'General Ward D',        x: Math.round(cw * 0.32), y: Math.round(ch * 0.67), w: Math.round(cw * 0.32), h: Math.round(ch * 0.23) },
+        // Exit door at far end
+        { type: 'exit_door', color: '#00FF94', label: 'Fire Exit',        x: Math.round(cw * 0.87), y: ch - 20, w: 60, h: 20 },
+        // AED and fire ext in corridor
+        { type: 'aed_station', color: '#FF6B35', label: 'AED Station',    x: Math.round(cw * 0.38), y: Math.round(ch * 0.55) + 5, w: 35, h: 35 },
+        { type: 'fire_ext',  color: '#FF2D2D', label: 'Fire Extinguisher',x: Math.round(cw * 0.62), y: Math.round(ch * 0.55) + 5, w: 30, h: 35 },
+      ];
+
+      const genCameras = [
+        { x: Math.round(cw * 0.05),  y: Math.round(ch * 0.05),  angle: Math.PI * 0.75, label: 'Cam 1' },
+        { x: Math.round(cw * 0.35),  y: Math.round(ch * 0.05),  angle: Math.PI * 1.25, label: 'Cam 2' },
+        { x: Math.round(cw * 0.75),  y: Math.round(ch * 0.05),  angle: Math.PI * 1.25, label: 'Cam 3' },
+        { x: Math.round(cw * 0.5),   y: Math.round(ch * 0.61),  angle: Math.PI * 0.5,  label: 'Cam 4' },
+        { x: Math.round(cw * 0.05),  y: Math.round(ch * 0.75),  angle: 0,              label: 'Cam 5' },
+        { x: Math.round(cw * 0.95),  y: Math.round(ch * 0.35),  angle: Math.PI,        label: 'Cam 6' },
+      ];
+
+      const corY = Math.round(ch * 0.55), corH = Math.round(ch * 0.12);
+      const genWalls = [
+        // Outer perimeter
+        { x1: 0, y1: 0,  x2: cw, y2: 0 },
+        { x1: cw, y1: 0, x2: cw, y2: ch },
+        { x1: cw, y1: ch,x2: 0,  y2: ch },
+        { x1: 0, y1: ch, x2: 0,  y2: 0 },
+        // Main horizontal corridor top & bottom
+        { x1: 0, y1: corY, x2: cw, y2: corY },
+        { x1: 0, y1: corY + corH, x2: cw, y2: corY + corH },
+        // Left block vertical divider
+        { x1: Math.round(cw * 0.15), y1: 0, x2: Math.round(cw * 0.15), y2: corY },
+        { x1: Math.round(cw * 0.23), y1: 0, x2: Math.round(cw * 0.23), y2: corY },
+        // ICU horizontal separator
+        { x1: 0, y1: Math.round(ch * 0.28), x2: Math.round(cw * 0.15), y2: Math.round(ch * 0.28) },
+        // Surgery / lab divider
+        { x1: Math.round(cw * 0.23), y1: Math.round(ch * 0.3), x2: Math.round(cw * 0.45), y2: Math.round(ch * 0.3) },
+        // Ward dividers (top)
+        { x1: Math.round(cw * 0.45), y1: 0, x2: Math.round(cw * 0.45), y2: corY },
+        { x1: Math.round(cw * 0.73), y1: 0, x2: Math.round(cw * 0.73), y2: corY },
+        { x1: Math.round(cw * 0.9),  y1: 0, x2: Math.round(cw * 0.9),  y2: corY },
+        // Pharmacy divider
+        { x1: Math.round(cw * 0.45), y1: Math.round(ch * 0.28), x2: Math.round(cw * 0.67), y2: Math.round(ch * 0.28) },
+        // Ward dividers (bottom)
+        { x1: Math.round(cw * 0.32), y1: corY + corH, x2: Math.round(cw * 0.32), y2: ch },
+        { x1: Math.round(cw * 0.64), y1: corY + corH, x2: Math.round(cw * 0.64), y2: ch },
+        // Reception separator
+        { x1: 0, y1: ch - 90, x2: Math.round(cw * 0.28), y2: ch - 90 },
+        { x1: Math.round(cw * 0.28), y1: corY + corH, x2: Math.round(cw * 0.28), y2: ch },
+      ];
+
+      saveHistory();
+      zones.length = 0; cameras.length = 0; walls.length = 0;
+      genZones.forEach(z => zones.push({ ...z }));
+      genCameras.forEach(c => cameras.push({ ...c }));
+      genWalls.forEach(w => walls.push({ ...w }));
+
+      selected = null; showProps(); render(); autoSave();
+      window._hme_closeModal();
+      showToast('📐 Sample hospital layout generated — fine-tune as needed.');
+    };
+
     window._hme_analyzeImage = async function () {
       if (!uploadedBase64) return;
       const btn = document.getElementById('hme-btn-analyze');
-      if (btn) btn.disabled = true;
+      const cancelBtn = document.getElementById('hme-btn-cancel');
       const status = document.getElementById('hme-ai-status');
-      if (status) status.textContent = 'Analyzing floor plan with AI...';
+      const preview = document.getElementById('hme-ai-preview');
+      const previewZones = document.getElementById('hme-ai-zone-preview');
 
-      const prompt = `You are analyzing a hospital floor plan image. Identify all visible rooms, zones, and areas.
+      if (btn) btn.disabled = true;
+      if (cancelBtn) cancelBtn.disabled = true;
 
-Return ONLY a valid JSON array (no markdown, no explanation) with this exact structure:
-[{"type":"icu","label":"ICU","color":"#D85A30","x":40,"y":40,"w":160,"h":100}]
-
-Rules:
-- Canvas is 600 wide by 420 tall. Place zones proportionally.
-- Types and colors: icu→#D85A30 emergency→#E24B4A ward→#378ADD surgery→#7F77DD corridor→#888780 reception→#1D9E75 lab→#BA7517 pharmacy→#D4537E stairwell→#444441 other→#888780
-- Label each zone with a specific name, e.g. "Room 101"
-- Corridors: wide and thin rectangles
-- Min size: w=80, h=50 | Max 20 zones
-- Zones should not overlap heavily
-- x, y, w, h must be integers
-Only output the JSON array.`;
+      // Animated progress steps
+      const steps = [
+        '🔍 Reading blueprint layout...',
+        '🏥 Identifying zones and rooms...',
+        '📐 Mapping coordinates to grid...',
+        '✨ Finalizing zone positions...',
+      ];
+      let stepIdx = 0;
+      if (status) { status.style.color = 'rgba(255,255,255,0.5)'; status.textContent = steps[0]; }
+      const stepTimer = setInterval(() => {
+        stepIdx = (stepIdx + 1) % steps.length;
+        if (status) status.textContent = steps[stepIdx];
+      }, 1800);
 
       try {
-        const parsed = await analyzeFloorPlanImage(uploadedBase64, uploadedMimeType);
-        const cw = canvas.width, ch = canvas.height;
-        const scaleX = cw / 600, scaleY = ch / 420;
-        parsed.forEach(z => {
-          zones.push({ type: z.type || 'other', label: z.label || z.type, color: z.color || '#888780', x: Math.round(z.x * scaleX), y: Math.round(z.y * scaleY), w: Math.round(z.w * scaleX), h: Math.round(z.h * scaleY) });
+        const result = await analyzeFloorPlanImage(uploadedBase64, uploadedMimeType);
+        clearInterval(stepTimer);
+        _pendingAIResult = result;
+
+        const firstFloor = result.floors?.[0];
+        const geminiZones = firstFloor?.zones || [];
+        const geminiCams  = firstFloor?.cameras || [];
+        const geminiWalls = firstFloor?.walls || [];
+
+        // Build preview summary
+        let previewHtml = `<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:8px;">
+          Detected <strong style="color:white">${geminiZones.length}</strong> zones ·
+          <strong style="color:white">${geminiCams.length}</strong> cameras ·
+          <strong style="color:white">${geminiWalls.length}</strong> walls
+        </div>`;
+
+        // Group zones by type — types/colors come directly from Gemini
+        const byType = {};
+        geminiZones.forEach(z => {
+          const t = z.type || 'unknown';
+          if (!byType[t]) byType[t] = { count: 0, color: z.color || '#888780' };
+          byType[t].count++;
         });
-        if (status) status.textContent = `Done! ${parsed.length} zones generated. Close and fine-tune.`;
-        render();
-        setTimeout(window._hme_closeModal, 1800);
+        previewHtml += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
+        Object.entries(byType).forEach(([type, info]) => {
+          const c = info.color;
+          previewHtml += `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;background:${c}22;border:0.5px solid ${c}66;color:rgba(255,255,255,0.85);">
+            <span style="width:7px;height:7px;border-radius:2px;background:${c};display:inline-block;"></span>${type} ×${info.count}</span>`;
+        });
+        previewHtml += '</div>';
+
+        if (previewZones) { previewZones.innerHTML = previewHtml; previewZones.style.display = 'block'; }
+        if (status) status.textContent = '';
+
+        // Show confirm row
+        const confirmRow = document.getElementById('hme-ai-confirm-row');
+        const analyzeRow = document.getElementById('hme-ai-action-row');
+        if (confirmRow) confirmRow.style.display = 'flex';
+        if (analyzeRow) analyzeRow.style.display = 'none';
+        if (preview) preview.style.display = 'none';
+
       } catch (err) {
-        if (status) status.textContent = err.message === 'Missing VITE_GEMINI_API_KEY'
-          ? 'AI import is not configured yet. Add VITE_GEMINI_API_KEY to .env.local.'
-          : 'AI analysis failed. Try a clearer image or check the Gemini API key.';
-        console.error('Floor plan analysis failed:', err);
+        clearInterval(stepTimer);
+        if (status) {
+          status.style.color = '#f87171';
+          const isKeyMissing = err.message.includes('VITE_GEMINI_API_KEY');
+          status.innerHTML = isKeyMissing
+            ? '⚠ No API key — use <strong style="color:#c4b5fd;cursor:pointer;" onclick="window._hme_generateLayout()">Generate Sample Layout</strong> instead.'
+            : `✗ ${err.message} — or <strong style="color:#c4b5fd;cursor:pointer;" onclick="window._hme_generateLayout()">Generate Sample Layout</strong>`;
+        }
         if (btn) btn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+        console.error('Floor plan analysis failed:', err);
       }
+    };
+
+    window._hme_confirmAIImport = function (replaceExisting) {
+      if (!_pendingAIResult) return;
+      const result = _pendingAIResult;
+      _pendingAIResult = null;
+      const cw = canvas.width, ch = canvas.height;
+      const firstFloor = result.floors?.[0];
+      const geminiZones = firstFloor?.zones || [];
+      const geminiCams  = firstFloor?.cameras || [];
+      const geminiWalls = firstFloor?.walls || [];
+
+      // Gemini returns coordinates in fixed space: x 120–820 (range 700), y 80–420 (range 340)
+      const ox = 120, ow = 700; // origin x, working width
+      const oy = 80,  oh = 340; // origin y, working height
+      const sx = cw / ow;       // x scale factor
+      const sy = ch / oh;       // y scale factor
+
+      // Save undo state before making changes
+      saveHistory();
+
+      if (replaceExisting) {
+        zones.length = 0;
+        cameras.length = 0;
+        walls.length = 0;
+      }
+
+      // Place zones — types and colors come directly from Gemini
+      geminiZones.forEach(z => {
+        zones.push({
+          type:  z.type  || 'corridor',
+          color: z.color || '#888780',
+          label: z.label || z.type || 'Zone',
+          x: Math.round((z.x - ox) * sx),
+          y: Math.round((z.y - oy) * sy),
+          w: Math.max(20, Math.round(z.w * sx)),
+          h: Math.max(10, Math.round(z.h * sy)),
+        });
+      });
+
+      // Place cameras — angles already in radians from Gemini
+      geminiCams.forEach(c => {
+        cameras.push({
+          x:     Math.round((c.x - ox) * sx),
+          y:     Math.round((c.y - oy) * sy),
+          angle: typeof c.angle === 'number' ? c.angle : 0,
+          label: c.label || 'Cam',
+        });
+      });
+
+      // Place walls — new schema includes explicit wall segments
+      geminiWalls.forEach(w => {
+        walls.push({
+          x1: Math.round((w.x1 - ox) * sx),
+          y1: Math.round((w.y1 - oy) * sy),
+          x2: Math.round((w.x2 - ox) * sx),
+          y2: Math.round((w.y2 - oy) * sy),
+        });
+      });
+
+      // Set blueprint at 35% opacity so user can compare zones against original
+      setBgOpacity(35);
+      const slider = document.querySelector('#hme-opacity-row input[type=range]');
+      if (slider) slider.value = 35;
+      const opVal = document.getElementById('hme-opacity-val');
+      if (opVal) opVal.textContent = '35%';
+      const opRow = document.getElementById('hme-opacity-row');
+      if (opRow) opRow.style.display = 'flex';
+
+      selected = null;
+      showProps();
+      render();
+      autoSave();
+
+      window._hme_closeModal();
+      showToast(`✓ AI built map: ${geminiZones.length} zones · ${geminiCams.length} cameras · ${geminiWalls.length} walls`);
     };
 
     // ── Boot ───────────────────────────────────────────────────────────────────
@@ -796,6 +1123,7 @@ Only output the JSON array.`;
       delete window._hme_setBgOpacity;
       delete window._hme_removeBg;
       delete window._hme_analyzeImage;
+      delete window._hme_confirmAIImport;
       delete window.selected_hme_obj;
     };
   }, [hospitalId]);
@@ -879,7 +1207,7 @@ Only output the JSON array.`;
             <button id="hme-btn-select" data-tool="select" className="hme-tool-btn hme-active" onClick={() => window._hme_setTool('select')}>Select</button>
             <button id="hme-btn-draw" data-tool="draw" className="hme-tool-btn" onClick={() => window._hme_setTool('draw')}>Draw Wall</button>
             <button id="hme-btn-camera" data-tool="camera" className="hme-tool-btn" onClick={() => window._hme_setTool('camera')}>Add Camera</button>
-            <button className="hme-tool-btn hme-btn-ai" onClick={() => window._hme_openAIModal()}>✨ AI Import Photo</button>
+
             <button className="hme-tool-btn" onClick={() => window._hme_clearAll()}>Clear All</button>
             <button id="hme-btn-undo" className="hme-tool-btn" onClick={() => window._hme_undo()} disabled title="Undo (Ctrl+Z)">↩ Undo</button>
             <button id="hme-btn-redo" className="hme-tool-btn" onClick={() => window._hme_redo()} disabled title="Redo (Ctrl+Y)">↪ Redo</button>
@@ -909,9 +1237,23 @@ Only output the JSON array.`;
 
           {/* Canvas */}
           <div id="hme-canvas-wrap" style={{ flex: 1, position: 'relative', background: '#0a0f1e', overflow: 'hidden' }}>
-            <canvas id="hme-bg-canvas" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
-            <canvas id="hme-grid-canvas" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
-            <canvas id="hme-map-canvas" style={{ position: 'absolute', top: 0, left: 0 }} />
+            <div id="hme-zoom-container" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', transformOrigin: 'top left', willChange: 'transform' }}>
+              <img id="hme-bg-canvas" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'none' }} />
+              <canvas id="hme-grid-canvas" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+              <canvas id="hme-map-canvas" style={{ position: 'absolute', top: 0, left: 0 }} />
+            </div>
+
+            {/* Zoom Controls Overlay */}
+            <div style={{ position: 'absolute', bottom: 20, right: 20, display: 'flex', background: 'rgba(13, 19, 38, 0.8)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, backdropFilter: 'blur(4px)', zIndex: 10 }}>
+               <button onClick={() => window._hme_zoom(-1)} style={{ padding: '6px 12px', fontSize: 13, color: 'rgba(255,255,255,0.8)', background: 'transparent', border: 'none', cursor: 'pointer', borderRight: '0.5px solid rgba(255,255,255,0.1)' }}>−</button>
+               <button onClick={() => window._hme_resetZoom()} style={{ padding: '6px 14px', fontSize: 11, color: 'rgba(255,255,255,0.8)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Reset</button>
+               <button onClick={() => window._hme_zoom(1)} style={{ padding: '6px 12px', fontSize: 13, color: 'rgba(255,255,255,0.8)', background: 'transparent', border: 'none', cursor: 'pointer', borderLeft: '0.5px solid rgba(255,255,255,0.1)' }}>+</button>
+            </div>
+            
+            {/* Pan Hint Overlay */}
+            <div style={{ position: 'absolute', top: 20, left: 20, pointerEvents: 'none', background: 'rgba(0,0,0,0.4)', padding: '6px 12px', borderRadius: 20, border: '0.5px solid rgba(255,255,255,0.05)', fontSize: 10, color: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(2px)' }}>
+               💡 Scroll to zoom · Space+Drag or Middle-Click to pan
+            </div>
           </div>
         </div>
 
@@ -925,27 +1267,58 @@ Only output the JSON array.`;
       </div>
 
       {/* AI Modal */}
-      <div id="hme-ai-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'none', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
-        <div style={{ background: '#0d1326', borderRadius: 14, border: '0.5px solid rgba(255,255,255,0.1)', width: 440, maxWidth: '95vw', padding: 28, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6, color: 'white', display: 'flex', alignItems: 'center', gap: 8 }}>✨ AI Floor Plan Import</h2>
-          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 18 }}>Upload a photo or scan of your hospital floor plan. AI will analyze it and auto-place zones on the map.</p>
+      <div id="hme-ai-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'none', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(6px)' }}>
+        <div style={{ background: '#0d1326', borderRadius: 16, border: '0.5px solid rgba(139,92,246,0.3)', width: 480, maxWidth: '95vw', padding: 28, boxShadow: '0 24px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(139,92,246,0.1)' }}>
+          
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(139,92,246,0.2)', border: '0.5px solid rgba(139,92,246,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>✨</div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'white', margin: 0 }}>AI Blueprint Analyzer</h2>
+          </div>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 18, marginTop: 4 }}>Upload a hospital floor plan or blueprint — AI will read the layout and auto-generate all zones, rooms, and camera positions.</p>
+
+          {/* Drop zone */}
           <div
             id="hme-drop-zone"
-            onClick={() => document.getElementById('hme-file-input').click()}
-            style={{ border: '1.5px dashed rgba(59,130,246,0.4)', borderRadius: 10, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', transition: 'background 0.15s', background: 'rgba(59,130,246,0.03)' }}
+            onClick={() => {
+              const fileInput = document.getElementById('hme-file-input');
+              if (fileInput) fileInput.click();
+            }}
+            style={{ border: '1.5px dashed rgba(139,92,246,0.35)', borderRadius: 10, padding: '22px 16px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', background: 'rgba(139,92,246,0.04)' }}
           >
-            <input type="file" id="hme-file-input" accept="image/*" style={{ display: 'none' }} onChange={(e) => window._hme_handleFile(e.target.files[0])} />
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🏥</div>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', margin: 0 }}>Click to upload or drag & drop</p>
-            <small style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>JPG, PNG supported</small>
+            <div style={{ pointerEvents: 'none' }}>
+              <div style={{ color: 'rgba(139,92,246,0.8)', fontSize: 24, marginBottom: 8 }}>📄</div>
+              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Click to upload blueprint</div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>PNG, JPG up to 10MB</div>
+            </div>
+            <input type="file" id="hme-file-input" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
+              if (window._hme_handleFile && e.target.files && e.target.files[0]) {
+                window._hme_handleFile(e.target.files[0]);
+              }
+            }} />
           </div>
-          <div id="hme-ai-preview" style={{ marginTop: 14, display: 'none' }}>
-            <img id="hme-preview-img" src="" alt="preview" style={{ width: '100%', maxHeight: 140, objectFit: 'contain', borderRadius: 8, border: '0.5px solid rgba(255,255,255,0.1)' }} />
+
+          <div id="hme-ai-preview" style={{ display: 'none', marginTop: 16 }}>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 6, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selected Image</div>
+            <div style={{ width: '100%', height: 140, borderRadius: 8, overflow: 'hidden', border: '0.5px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img id="hme-preview-img" src="" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+            </div>
           </div>
+
+          <div id="hme-ai-zone-preview" style={{ display: 'none', marginTop: 16, background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.08)', padding: 12, borderRadius: 8 }}></div>
+
           <div id="hme-ai-status" style={{ marginTop: 12, fontSize: 13, color: 'rgba(255,255,255,0.5)', minHeight: 20, textAlign: 'center' }} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-            <button onClick={() => window._hme_closeModal()} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)' }}>Cancel</button>
-            <button id="hme-btn-analyze" disabled onClick={() => window._hme_analyzeImage()} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 600 }}>Analyze with AI</button>
+
+          <div id="hme-ai-action-row" style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+            <button id="hme-btn-cancel" onClick={() => window._hme_closeModal && window._hme_closeModal()} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)' }}>Cancel</button>
+            <button id="hme-btn-analyze" disabled onClick={() => window._hme_analyzeImage && window._hme_analyzeImage()} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 600 }}>Analyze with AI</button>
+            <button id="hme-btn-sample" onClick={() => window._hme_generateLayout && window._hme_generateLayout()} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(139,92,246,0.5)', background: 'rgba(139,92,246,0.15)', color: '#ddd6fe', fontWeight: 600 }}>Sample Layout (Instant)</button>
+          </div>
+
+          <div id="hme-ai-confirm-row" style={{ display: 'none', gap: 8, marginTop: 18 }}>
+            <button onClick={() => window._hme_closeModal && window._hme_closeModal()} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)' }}>Discard</button>
+            <button onClick={() => window._hme_confirmAIImport && window._hme_confirmAIImport(false)} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 600 }}>+ Add to Map</button>
+            <button onClick={() => window._hme_confirmAIImport && window._hme_confirmAIImport(true)} style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(239,68,68,0.5)', background: 'rgba(239,68,68,0.15)', color: '#fca5a5', fontWeight: 600 }}>Replace Map</button>
           </div>
         </div>
       </div>

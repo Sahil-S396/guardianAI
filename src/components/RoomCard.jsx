@@ -25,6 +25,8 @@ export default function RoomCard({ room }) {
 
   const [fallCountdown, setFallCountdown] = useState(null);
   const [triggering, setTriggering] = useState(null); // 'fire' | 'fall' | null
+  const [alertError, setAlertError] = useState(null);
+  const [alertSuccess, setAlertSuccess] = useState(false);
 
   useEffect(() => {
     if (fallCountdown === null) return;
@@ -54,6 +56,8 @@ export default function RoomCard({ room }) {
 
   const handleCreateAlert = useCallback(async (alertType) => {
     setTriggering(alertType);
+    setAlertError(null);
+    setAlertSuccess(false);
     try {
       const nearbyStaff = await fetchNearbyStaff();
       const secondsSinceTrigger = alertType === 'fall' ? FALL_COUNTDOWN_SECONDS : 0;
@@ -109,8 +113,12 @@ export default function RoomCard({ room }) {
       }
     } catch (err) {
       console.error('Failed to create alert:', err);
+      setAlertError(err?.message || 'Failed to create alert. Check Firestore permissions.');
+      setTimeout(() => setAlertError(null), 5000);
     } finally {
       setTriggering(null);
+      setAlertSuccess(true);
+      setTimeout(() => setAlertSuccess(false), 2000);
     }
   }, [hospitalId, room, drillMode, user]);
 
@@ -136,17 +144,19 @@ export default function RoomCard({ room }) {
     metaParts.push(room.type);
   }
 
+  const normalizedStatus = (room.status || 'clear').toLowerCase();
+
   return (
     <div
       id={`room-card-${room.id}`}
-      className={`glass-card p-4 flex flex-col gap-3 transition-all duration-300 ${statusColors[room.status] || ''} ${statusBg[room.status] || ''}`}
+      className={`glass-card p-4 flex flex-col gap-3 transition-all duration-300 ${statusColors[normalizedStatus] || 'room-clear'} ${statusBg[normalizedStatus] || 'bg-emerald-500/5'}`}
     >
       <div className="flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-white">{room.name}</h3>
           <p className="text-xs text-white/50 mt-0.5">{metaParts.join(' · ')}</p>
         </div>
-        <StatusBadge status={room.status} />
+        <StatusBadge status={normalizedStatus} />
       </div>
 
       {fallCountdown !== null && (
@@ -170,6 +180,17 @@ export default function RoomCard({ room }) {
             />
           </div>
         </div>
+      )}
+
+      {alertError && (
+        <p className="text-[10px] text-accent-red bg-accent-red/10 border border-accent-red/20 rounded px-2 py-1">
+          ⚠ {alertError}
+        </p>
+      )}
+      {alertSuccess && !alertError && (
+        <p className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-2 py-1">
+          ✓ Alert triggered successfully
+        </p>
       )}
 
       <div className="flex gap-2 mt-auto">
@@ -222,8 +243,10 @@ export default function RoomCard({ room }) {
 }
 
 function StatusBadge({ status }) {
-  if (status === 'clear') return <span className="badge-clear"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Clear</span>;
-  if (status === 'alert') return <span className="badge-alert"><span className="w-1.5 h-1.5 rounded-full bg-accent-amber" />Alert</span>;
-  if (status === 'critical') return <span className="badge-critical"><span className="w-1.5 h-1.5 rounded-full bg-accent-red animate-ping" />Critical</span>;
-  return null;
+  const s = (status || 'clear').toLowerCase();
+  if (s === 'clear') return <span className="badge-clear"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Clear</span>;
+  if (s === 'alert') return <span className="badge-alert"><span className="w-1.5 h-1.5 rounded-full bg-accent-amber" />Alert</span>;
+  if (s === 'critical') return <span className="badge-critical"><span className="w-1.5 h-1.5 rounded-full bg-accent-red animate-ping" />Critical</span>;
+  // Fallback for any unexpected status value
+  return <span className="badge-clear"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Clear</span>;
 }

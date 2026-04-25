@@ -168,6 +168,19 @@
     background-position: right 12px center;
     padding-right: 36px;
     appearance: none;
+    color: white;
+  }
+
+  .guardian-select option {
+    background-color: #111827;
+    color: #ffffff;
+  }
+
+  .guardian-select option:hover,
+  .guardian-select option:focus,
+  .guardian-select option:checked {
+    background-color: #1e3a5f;
+    color: #ffffff;
   }
 
   /* ─── Sidebar ─── */
