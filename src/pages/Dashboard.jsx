@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, where, limit } from 'firebase/firestore';
+import { collection, query, onSnapshot, where, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import AlertCard from '../components/AlertCard';
@@ -31,11 +31,17 @@ export default function Dashboard() {
     if (!hospitalId) return;
     const q = query(
       collection(db, `hospitals/${hospitalId}/alerts`),
-      orderBy('createdAt', 'desc'),
       limit(ALERT_LIMIT)
     );
     const unsub = onSnapshot(q, (snap) => {
-      setAlerts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Sort client-side to avoid needing a Firestore composite index
+      docs.sort((a, b) => {
+        const aTime = a.createdAt?.seconds ?? 0;
+        const bTime = b.createdAt?.seconds ?? 0;
+        return bTime - aTime;
+      });
+      setAlerts(docs);
       setLoading(false);
     });
     return unsub;
