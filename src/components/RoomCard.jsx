@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, addDoc, serverTimestamp, query, getDocs, where, updateDoc, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import { useAuth } from '../contexts/AuthContext';
-import { callGeminiForAlert } from '../gemini';
 import { formatZoneType } from '../utils/floorPublishing';
+import { createEmergencyAlert } from '../utils/alertService';
 
 const FALL_COUNTDOWN_SECONDS = 40;
 
@@ -20,7 +18,7 @@ const statusBg = {
   critical: 'bg-accent-red/5',
 };
 
-export default function RoomCard({ room }) {
+export default function RoomCard({ room, onDelete = null, deleting = false }) {
   const { hospitalId, drillMode } = useHospital();
   const { user } = useAuth();
 
@@ -29,83 +27,21 @@ export default function RoomCard({ room }) {
   const [alertError, setAlertError] = useState(null);
   const [alertSuccess, setAlertSuccess] = useState(false);
 
-  const fetchNearbyStaff = useCallback(async () => {
-    try {
-      const staffSnap = await getDocs(
-        query(
-          collection(db, `hospitals/${hospitalId}/staff`),
-          where('floor', '==', room.floor),
-          where('available', '==', true)
-        )
-      );
-      return staffSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    } catch {
-      return [];
-    }
-  }, [hospitalId, room.floor]);
-
   const handleCreateAlert = useCallback(async (alertType) => {
     setTriggering(alertType);
     setAlertError(null);
     setAlertSuccess(false);
     try {
-      const nearbyStaff = await fetchNearbyStaff();
       const secondsSinceTrigger = alertType === 'fall' ? FALL_COUNTDOWN_SECONDS : 0;
-
-      const newAlertRef = await addDoc(
-        collection(db, `hospitals/${hospitalId}/alerts`),
-        {
-          type: alertType,
-          roomId: room.id,
-          roomName: room.name,
-          roomFloor: room.floor,
-          roomZone: room.zone,
-          roomMapNodeId: room.mapNodeId || null,
-          hazardZoneId: room.mapNodeId || null,
-          severity: alertType === 'fire' ? 'critical' : 'high',
-          status: 'active',
-          createdAt: serverTimestamp(),
-          acknowledgedBy: null,
-          escalatedAt: null,
-          geminiResponse: null,
-          isDrill: drillMode,
-          triggeredBy: user?.uid || null,
-        }
-      );
-
-      await updateDoc(doc(db, `hospitals/${hospitalId}/rooms`, room.id), {
-        status: alertType === 'fire' ? 'critical' : 'alert',
-      });
-
-      callGeminiForAlert({
-        roomName: room.name,
-        zone: room.zone,
-        floor: room.floor,
+      await createEmergencyAlert({
+        hospitalId,
+        room,
         alertType,
-        nearbyStaff,
+        drillMode,
+        userId: user?.uid || null,
+        source: 'manual',
         secondsSinceTrigger,
-      }).then(async (geminiResponse) => {
-        await updateDoc(doc(db, `hospitals/${hospitalId}/alerts`, newAlertRef.id), {
-          geminiResponse,
-          severity: geminiResponse.severity,
-        });
       });
-
-      if (!drillMode) {
-        setTimeout(async () => {
-          try {
-            const alertDoc = await getDoc(doc(db, `hospitals/${hospitalId}/alerts`, newAlertRef.id));
-            if (alertDoc.exists() && alertDoc.data().status === 'active') {
-              await updateDoc(doc(db, `hospitals/${hospitalId}/alerts`, newAlertRef.id), {
-                status: 'escalated',
-                escalatedAt: serverTimestamp(),
-              });
-            }
-          } catch (err) {
-            console.error('Auto-escalation failed:', err);
-          }
-        }, 90_000);
-      }
     } catch (err) {
       console.error('Failed to create alert:', err);
       setAlertError(err?.message || 'Failed to create alert. Check Firestore permissions.');
@@ -115,7 +51,7 @@ export default function RoomCard({ room }) {
       setAlertSuccess(true);
       setTimeout(() => setAlertSuccess(false), 2000);
     }
-  }, [drillMode, fetchNearbyStaff, hospitalId, room, user]);
+  }, [drillMode, hospitalId, room, user]);
 
   useEffect(() => {
     if (fallCountdown === null) return undefined;
@@ -165,10 +101,10 @@ export default function RoomCard({ room }) {
       id={`room-card-${room.id}`}
       className={`glass-card p-4 flex flex-col gap-3 transition-all duration-300 ${statusColors[normalizedStatus] || 'room-clear'} ${statusBg[normalizedStatus] || 'bg-emerald-500/5'}`}
     >
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-white">{room.name}</h3>
-          <p className="text-xs text-white/50 mt-0.5">{metaParts.join(' · ')}</p>
+          <p className="text-xs text-white/50 mt-0.5">{metaParts.join(' - ')}</p>
         </div>
         <StatusBadge status={normalizedStatus} />
       </div>
@@ -198,12 +134,12 @@ export default function RoomCard({ room }) {
 
       {alertError && (
         <p className="text-[10px] text-accent-red bg-accent-red/10 border border-accent-red/20 rounded px-2 py-1">
-          ⚠ {alertError}
+          Warning: {alertError}
         </p>
       )}
       {alertSuccess && !alertError && (
         <p className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-2 py-1">
-          ✓ Alert triggered successfully
+          Alert triggered successfully
         </p>
       )}
 
@@ -211,7 +147,7 @@ export default function RoomCard({ room }) {
         <button
           id={`room-${room.id}-fire-btn`}
           onClick={handleFireTrigger}
-          disabled={triggering !== null}
+          disabled={triggering !== null || deleting}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 active:scale-95
             ${drillMode
               ? 'bg-accent-amber/20 text-accent-amber border border-accent-amber/30 hover:bg-accent-amber/30'
@@ -234,7 +170,7 @@ export default function RoomCard({ room }) {
         <button
           id={`room-${room.id}-fall-btn`}
           onClick={handleFallTrigger}
-          disabled={triggering !== null}
+          disabled={triggering !== null || deleting}
           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 active:scale-95
             bg-accent-amber/10 text-accent-amber border border-accent-amber/20 hover:bg-accent-amber/20
             disabled:opacity-50 disabled:cursor-not-allowed"
@@ -252,6 +188,17 @@ export default function RoomCard({ room }) {
           {drillMode ? 'Drill Fall' : 'Fall'}
         </button>
       </div>
+
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting || triggering !== null}
+          className="mt-1 w-full rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {deleting ? 'Deleting...' : 'Delete Room'}
+        </button>
+      )}
     </div>
   );
 }
@@ -261,6 +208,5 @@ function StatusBadge({ status }) {
   if (s === 'clear') return <span className="badge-clear"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Clear</span>;
   if (s === 'alert') return <span className="badge-alert"><span className="w-1.5 h-1.5 rounded-full bg-accent-amber" />Alert</span>;
   if (s === 'critical') return <span className="badge-critical"><span className="w-1.5 h-1.5 rounded-full bg-accent-red animate-ping" />Critical</span>;
-  // Fallback for any unexpected status value
   return <span className="badge-clear"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Clear</span>;
 }

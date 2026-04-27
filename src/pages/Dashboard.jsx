@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [aiMonitors, setAiMonitors] = useState([]);
   const [publishedFloors, setPublishedFloors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
@@ -73,6 +74,16 @@ export default function Dashboard() {
   useEffect(() => {
     if (!hospitalId) return undefined;
 
+    const unsub = onSnapshot(collection(db, `hospitals/${hospitalId}/aiMonitors`), (snap) => {
+      setAiMonitors(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+    });
+
+    return unsub;
+  }, [hospitalId]);
+
+  useEffect(() => {
+    if (!hospitalId) return undefined;
+
     const unsub = onSnapshot(collection(db, `hospitals/${hospitalId}/floorMaps`), (snap) => {
       setPublishedFloors(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
     });
@@ -92,6 +103,8 @@ export default function Dashboard() {
   const escalatedAlerts = visibleAlerts.filter((alert) => alert.status === 'escalated');
   const criticalRooms = visibleRooms.filter((room) => room.status === 'critical');
   const availableStaff = staff.filter((member) => member.available);
+  const activeCameraMonitors = aiMonitors.filter((monitor) => monitor.isActive || monitor.status === 'active' || monitor.status === 'alerting');
+  const alertingCameraMonitors = activeCameraMonitors.filter((monitor) => monitor.status === 'alerting' || monitor.level === 'critical');
 
   const filteredAlerts = filterStatus === 'all'
     ? visibleAlerts
@@ -120,7 +133,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard
           label="Active Alerts"
           value={activeAlerts.length}
@@ -145,6 +158,12 @@ export default function Dashboard() {
           value={availableStaff.length}
           color="text-accent-teal"
           sub={`of ${staff.length} total`}
+        />
+        <StatCard
+          label="AI Cameras"
+          value={activeCameraMonitors.length}
+          color={alertingCameraMonitors.length > 0 ? 'text-accent-red' : 'text-accent-blue'}
+          sub={alertingCameraMonitors.length > 0 ? `${alertingCameraMonitors.length} in critical watch` : 'Live monitor network'}
         />
       </div>
 
@@ -247,6 +266,56 @@ export default function Dashboard() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="glass-card p-5">
+            <div className="section-header">
+              <h2 className="section-title">AI Camera Grid</h2>
+              <span className="text-xs text-white/40">{activeCameraMonitors.length} live</span>
+            </div>
+
+            {activeCameraMonitors.length === 0 ? (
+              <div className="py-6 text-center">
+                <p className="text-sm text-white/35">No active AI monitors.</p>
+                <p className="mt-1 text-xs text-white/20">Start a live camera from the AI Monitor page.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeCameraMonitors.slice(0, 4).map((monitor) => (
+                  <div key={monitor.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{monitor.roomName}</p>
+                        <p className="mt-1 text-xs text-white/40">{monitor.cameraLabel || 'Camera feed'} • Floor {monitor.roomFloor}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                        monitor.status === 'alerting'
+                          ? 'bg-accent-red/15 text-accent-red'
+                          : 'bg-accent-blue/15 text-accent-blue'
+                      }`}
+                      >
+                        {monitor.status || 'active'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-white/35">Fire</p>
+                        <p className="mt-1 text-sm font-semibold text-white">{monitor.fireScore ?? 0}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-white/35">Fall</p>
+                        <p className="mt-1 text-sm font-semibold text-white">{monitor.fallScore ?? 0}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-white/35">Crisis</p>
+                        <p className="mt-1 text-sm font-semibold text-white">{monitor.crisisScore ?? 0}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

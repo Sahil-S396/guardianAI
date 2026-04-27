@@ -11,6 +11,7 @@ import AlertDetail from './pages/AlertDetail';
 import Staff from './pages/Staff';
 import Drill from './pages/Drill';
 import HospitalMapEditor from './pages/HospitalMapEditor';
+import AIMonitor from './pages/AIMonitor';
 
 // Layout
 import AppLayout from './components/layout/AppLayout';
@@ -53,6 +54,7 @@ export default function App() {
               <Route path="/alerts/:alertId" element={<AlertDetail />} />
               <Route path="/staff" element={<Staff />} />
               <Route path="/drill" element={<Drill />} />
+              <Route path="/ai-monitor" element={<AIMonitor />} />
               <Route path="/map-editor" element={<HospitalMapEditor />} />
             </Route>
 

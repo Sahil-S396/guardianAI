@@ -9,6 +9,7 @@ const routeLabels = {
   '/dashboard': 'Rehab Operations Dashboard',
   '/rooms': 'Rooms Management',
   '/staff': 'Staff Directory',
+  '/ai-monitor': 'AI Camera Monitor',
   '/drill': 'Drill Mode Simulator',
 };
 

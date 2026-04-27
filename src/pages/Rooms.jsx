@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import RoomCard from '../components/RoomCard';
@@ -14,6 +14,7 @@ export default function Rooms() {
   const [filterZone, setFilterZone] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [search, setSearch] = useState('');
+  const [deletingRoomId, setDeletingRoomId] = useState(null);
 
   useEffect(() => {
     if (!hospitalId) return;
@@ -56,13 +57,30 @@ export default function Rooms() {
   const alertCount = visibleRooms.filter((room) => room.status === 'alert').length;
   const criticalCount = visibleRooms.filter((room) => room.status === 'critical').length;
 
+  const handleDeleteRoom = async (room) => {
+    if (!hospitalId) return;
+
+    const roomName = room?.name || 'this room';
+    if (!window.confirm(`Delete ${roomName} from the rooms list?`)) return;
+
+    setDeletingRoomId(room.id);
+    try {
+      await deleteDoc(doc(db, `hospitals/${hospitalId}/rooms`, room.id));
+    } catch (error) {
+      console.error('Failed to delete room:', error);
+      window.alert('Could not delete this room right now. Please try again.');
+    } finally {
+      setDeletingRoomId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Rooms Management</h1>
           <p className="text-sm text-white/40 mt-0.5">
-            {visibleRooms.length} rooms · {clearCount} clear · {alertCount} alert · {criticalCount} critical
+            {visibleRooms.length} rooms - {clearCount} clear - {alertCount} alert - {criticalCount} critical
           </p>
         </div>
         {drillMode && (
@@ -130,7 +148,12 @@ export default function Rooms() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map((room) => (
-            <RoomCard key={room.id} room={room} />
+            <RoomCard
+              key={room.id}
+              room={room}
+              deleting={deletingRoomId === room.id}
+              onDelete={() => handleDeleteRoom(room)}
+            />
           ))}
         </div>
       )}

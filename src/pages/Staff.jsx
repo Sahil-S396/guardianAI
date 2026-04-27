@@ -19,10 +19,17 @@ const roleColors = {
 };
 
 const roleIcons = {
-  nurse: 'RN',
-  admin: 'MD',
-  security: 'SEC',
+  nurse: 'N',
+  admin: 'A',
+  security: 'S',
 };
+
+function formatRoleCountLabel(role, count) {
+  if (role === 'security') return 'security';
+  if (role === 'nurse') return count === 1 ? 'nurse' : 'nurses';
+  if (role === 'admin') return count === 1 ? 'admin' : 'admins';
+  return count === 1 ? role : `${role}s`;
+}
 
 export default function Staff() {
   const { hospitalId, trackingMode } = useHospital();
@@ -177,7 +184,7 @@ export default function Staff() {
         <div>
           <h1 className="text-2xl font-bold text-white">Staff Directory</h1>
           <p className="mt-0.5 text-sm text-white/40">
-            {staffRows.length} staff · {available} available · {staffRows.length - available} busy
+            {staffRows.length} staff - {available} available - {staffRows.length - available} busy
           </p>
         </div>
 
@@ -188,7 +195,7 @@ export default function Staff() {
               const count = staffRows.filter((s) => s.role === role).length;
               return (
                 <div key={role} className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${roleColors[role]}`}>
-                  {roleIcons[role]} {count} {role}s
+                  {count} {formatRoleCountLabel(role, count)}
                 </div>
               );
             })}

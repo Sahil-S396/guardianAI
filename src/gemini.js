@@ -7,11 +7,22 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
  * @param {Object} params - Alert context parameters
  * @returns {Promise<Object>} Parsed Gemini response JSON
  */
-export async function callGeminiForAlert({ roomName, zone, floor, alertType, nearbyStaff, secondsSinceTrigger }) {
+export async function callGeminiForAlert({
+  roomName,
+  zone,
+  floor,
+  alertType,
+  nearbyStaff,
+  secondsSinceTrigger,
+  detectionSummary = '',
+  cameraLabel = '',
+}) {
   const staffList = nearbyStaff?.map((s) => `${s.name} (${s.role})`).join(', ') || 'None found';
+  const cameraContext = cameraLabel ? ` Camera: ${cameraLabel}.` : '';
+  const detectionContext = detectionSummary ? ` Detection summary: ${detectionSummary}` : '';
 
   const prompt = `Emergency in ${roomName}, Zone ${zone}, Floor ${floor}. Type: ${alertType === 'fire' ? 'Fire' : 'Fall'}.
-Nearby staff: ${staffList}. Time since trigger: ${secondsSinceTrigger}s.
+Nearby staff: ${staffList}. Time since trigger: ${secondsSinceTrigger}s.${cameraContext}${detectionContext}
 Return ONLY valid JSON with this exact structure:
 {
   "severity": "low" | "medium" | "high" | "critical",
@@ -62,6 +73,87 @@ Return ONLY valid JSON with this exact structure:
       estimatedResponseTime: '3-5 minutes',
     };
   }
+}
+
+export async function analyzeCameraFrame(base64Image, {
+  mimeType = 'image/jpeg',
+  roomName = 'Unknown room',
+  floor = 'Unknown floor',
+  zone = 'Unknown zone',
+  cameraLabel = 'Guardian camera',
+} = {}) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Missing VITE_GEMINI_API_KEY');
+  }
+
+  const prompt = `You are analyzing a live hospital safety camera frame.
+
+Room: ${roomName}
+Floor: ${floor}
+Zone: ${zone}
+Camera: ${cameraLabel}
+
+Determine whether the frame suggests:
+1. visible fire or smoke
+2. a person who may have fallen or is collapsed
+
+Return ONLY JSON with this exact structure:
+{
+  "fireScore": 0-100,
+  "fallScore": 0-100,
+  "detectedType": "fire" | "fall" | "none",
+  "summary": "one short sentence",
+  "visibleHazards": ["short phrase"],
+  "recommendedAction": "string"
+}
+
+Scoring guidance:
+- 0-20 means not visible
+- 21-49 means weak suspicion
+- 50-69 means likely and should be watched
+- 70-100 means high confidence and should trigger a response
+
+Be conservative. If the frame is unclear, lower the score and explain uncertainty in the summary.`;
+
+  const response = await fetch(GEMINI_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType,
+              data: base64Image,
+            },
+          },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 512,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gemini camera analysis error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+  const parsed = JSON.parse(rawText);
+
+  return {
+    fireScore: Number(parsed.fireScore) || 0,
+    fallScore: Number(parsed.fallScore) || 0,
+    detectedType: parsed.detectedType || 'none',
+    summary: parsed.summary || 'Frame unclear.',
+    visibleHazards: Array.isArray(parsed.visibleHazards) ? parsed.visibleHazards : [],
+    recommendedAction: parsed.recommendedAction || 'Continue monitoring the feed.',
+  };
 }
 
 export async function analyzeFloorPlanImage(base64Image, mimeType = 'image/jpeg') {
@@ -179,7 +271,7 @@ Analyze the ACTUAL image uploaded. Do not use generic or placeholder data. Map w
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
-  } catch (e) {
+  } catch {
     // Try to extract JSON from anywhere in the response
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {

@@ -218,6 +218,8 @@ export default function AlertDetail() {
                 { label: 'Room Type', value: room?.type ? formatZoneType(room.type) : '-' },
                 { label: 'Event Type', value: alert.type?.toUpperCase() },
                 { label: 'Severity', value: gemini?.severity?.toUpperCase() || alert.severity?.toUpperCase() || '-' },
+                { label: 'Source', value: alert.source === 'ai-monitor' ? 'AI Camera Monitor' : 'Manual Trigger' },
+                { label: 'Camera', value: alert.cameraLabel || '-' },
               ].map(({ label, value }) => (
                 <div key={label}>
                   <p className="text-xs text-white/40">{label}</p>
@@ -226,6 +228,16 @@ export default function AlertDetail() {
               ))}
             </div>
           </div>
+
+          {alert.detectionSnapshot && (
+            <div className="glass-card p-5">
+              <div className="grid grid-cols-3 gap-4">
+                <MetricCard label="Fire Score" value={alert.detectionSnapshot.fireScore ?? 0} accent="text-accent-red" />
+                <MetricCard label="Fall Score" value={alert.detectionSnapshot.fallScore ?? 0} accent="text-accent-amber" />
+                <MetricCard label="Crisis Score" value={alert.detectionSnapshot.crisisScore ?? 0} accent="text-accent-blue" />
+              </div>
+            </div>
+          )}
 
           {gemini ? (
             <div className="glass-card p-5">
@@ -425,6 +437,15 @@ function TimelineItem({ step, label, time, done, inProgress }) {
         <p className={`text-xs font-medium ${done ? 'text-white' : 'text-white/40'}`}>{label}</p>
         {time && <p className="text-[10px] text-white/30 mt-0.5">{time}</p>}
       </div>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, accent }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+      <p className="text-xs text-white/40">{label}</p>
+      <p className={`mt-1 text-lg font-semibold ${accent}`}>{value}</p>
     </div>
   );
 }
