@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import { useAuth } from '../contexts/AuthContext';
 import { callGeminiForAlert } from '../gemini';
+import { formatZoneType } from '../utils/floorPublishing';
 
 const FALL_COUNTDOWN_SECONDS = 40;
 
@@ -28,18 +29,7 @@ export default function RoomCard({ room }) {
   const [alertError, setAlertError] = useState(null);
   const [alertSuccess, setAlertSuccess] = useState(false);
 
-  useEffect(() => {
-    if (fallCountdown === null) return;
-    if (fallCountdown <= 0) {
-      handleCreateAlert('fall');
-      setFallCountdown(null);
-      return;
-    }
-    const timer = setTimeout(() => setFallCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [fallCountdown]);
-
-  const fetchNearbyStaff = async () => {
+  const fetchNearbyStaff = useCallback(async () => {
     try {
       const staffSnap = await getDocs(
         query(
@@ -52,7 +42,7 @@ export default function RoomCard({ room }) {
     } catch {
       return [];
     }
-  };
+  }, [hospitalId, room.floor]);
 
   const handleCreateAlert = useCallback(async (alertType) => {
     setTriggering(alertType);
@@ -67,6 +57,11 @@ export default function RoomCard({ room }) {
         {
           type: alertType,
           roomId: room.id,
+          roomName: room.name,
+          roomFloor: room.floor,
+          roomZone: room.zone,
+          roomMapNodeId: room.mapNodeId || null,
+          hazardZoneId: room.mapNodeId || null,
           severity: alertType === 'fire' ? 'critical' : 'high',
           status: 'active',
           createdAt: serverTimestamp(),
@@ -120,7 +115,26 @@ export default function RoomCard({ room }) {
       setAlertSuccess(true);
       setTimeout(() => setAlertSuccess(false), 2000);
     }
-  }, [hospitalId, room, drillMode, user]);
+  }, [drillMode, fetchNearbyStaff, hospitalId, room, user]);
+
+  useEffect(() => {
+    if (fallCountdown === null) return undefined;
+
+    const timer = setTimeout(() => {
+      setFallCountdown((current) => {
+        if (current === null) {
+          return current;
+        }
+        if (current <= 1) {
+          handleCreateAlert('fall');
+          return null;
+        }
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [fallCountdown, handleCreateAlert]);
 
   const handleFireTrigger = () => {
     setFallCountdown(null);
@@ -137,11 +151,11 @@ export default function RoomCard({ room }) {
 
   const metaParts = [];
   if (room.zone && room.zone !== room.name) {
-    metaParts.push(`Zone ${room.zone}`);
+    metaParts.push(`Zone ${formatZoneType(room.zone)}`);
   }
   metaParts.push(`Floor ${room.floor}`);
   if (room.type && room.type !== room.zone) {
-    metaParts.push(room.type);
+    metaParts.push(formatZoneType(room.type));
   }
 
   const normalizedStatus = (room.status || 'clear').toLowerCase();

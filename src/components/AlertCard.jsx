@@ -38,7 +38,7 @@ export default function AlertCard({ alert, isDrill }) {
     ? 'border-accent-red/30 hover:border-accent-red/60'
     : 'border-accent-amber/30 hover:border-accent-amber/60';
 
-  const time = alert.createdAt?.toDate?.() || new Date(alert.createdAt?.seconds * 1000 || Date.now());
+  const time = alert.createdAt?.toDate?.() || new Date((alert.createdAt?.seconds || 0) * 1000);
 
   return (
     <div

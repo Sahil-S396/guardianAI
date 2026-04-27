@@ -3,10 +3,10 @@ import { useLocation } from 'react-router-dom';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useHospital } from '../../contexts/HospitalContext';
-import { useAuth } from '../../contexts/AuthContext';
+import { TRACKING_MODES } from '../../utils/staffTracker';
 
 const routeLabels = {
-  '/dashboard': 'Hospital Dashboard',
+  '/dashboard': 'Rehab Operations Dashboard',
   '/rooms': 'Rooms Management',
   '/staff': 'Staff Directory',
   '/drill': 'Drill Mode Simulator',
@@ -14,12 +14,10 @@ const routeLabels = {
 
 export default function Topbar() {
   const location = useLocation();
-  const { hospitalId, drillMode } = useHospital();
-  const { user } = useAuth();
+  const { hospitalId, drillMode, trackingMode, setTrackingMode } = useHospital();
   const [activeAlertCount, setActiveAlertCount] = useState(0);
   const [now, setNow] = useState(new Date());
 
-  // Live active alert count
   useEffect(() => {
     if (!hospitalId) return;
     const q = query(collection(db, `hospitals/${hospitalId}/alerts`));
@@ -33,7 +31,6 @@ export default function Topbar() {
     return unsub;
   }, [hospitalId]);
 
-  // Clock
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
@@ -48,7 +45,6 @@ export default function Topbar() {
 
   return (
     <header className="shrink-0 h-14 px-6 flex items-center justify-between border-b border-white/[0.07] bg-navy-800/60 backdrop-blur-sm">
-      {/* Left: page title */}
       <div className="flex items-center gap-3">
         <h2 className="text-base font-semibold text-white">{pageTitle}</h2>
         {drillMode && (
@@ -58,9 +54,32 @@ export default function Topbar() {
         )}
       </div>
 
-      {/* Right: alerts + time + user */}
       <div className="flex items-center gap-4">
-        {/* Active alerts indicator */}
+        <div className="hidden lg:flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+          <button
+            type="button"
+            onClick={() => setTrackingMode(TRACKING_MODES.LIVE)}
+            className={`px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider transition ${
+              trackingMode === TRACKING_MODES.LIVE
+                ? 'bg-emerald-500/20 text-emerald-300'
+                : 'text-white/45 hover:text-white/70'
+            }`}
+          >
+            Live check-ins
+          </button>
+          <button
+            type="button"
+            onClick={() => setTrackingMode(TRACKING_MODES.SIMULATION)}
+            className={`px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider transition ${
+              trackingMode === TRACKING_MODES.SIMULATION
+                ? 'bg-accent-amber/20 text-accent-amber'
+                : 'text-white/45 hover:text-white/70'
+            }`}
+          >
+            Simulation
+          </button>
+        </div>
+
         {activeAlertCount > 0 && (
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent-red/10 border border-accent-red/30">
             <span className="glow-dot-red animate-ping-slow" />
@@ -70,13 +89,11 @@ export default function Topbar() {
           </div>
         )}
 
-        {/* Clock */}
         <div className="text-right hidden sm:block">
           <p className="text-xs font-mono text-white font-semibold">{timeStr}</p>
           <p className="text-[10px] text-white/40">{dateStr}</p>
         </div>
 
-        {/* System status */}
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
           <span className="glow-dot-green" />
           <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Systems Online</span>

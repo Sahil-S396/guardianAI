@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+﻿import React, { useEffect } from 'react';
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { analyzeFloorPlanImage } from '../gemini';
@@ -10,7 +10,7 @@ export default function HospitalMapEditor() {
 
   useEffect(() => {
 
-    // ── Init canvas refs ─────────────────────────────────────────────────────
+    // â”€â”€ Init canvas refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const canvas = document.getElementById('hme-map-canvas');
     const ctx = canvas.getContext('2d');
     const gridCanvas = document.getElementById('hme-grid-canvas');
@@ -42,7 +42,7 @@ export default function HospitalMapEditor() {
       return { w: 120, h: 60 };
     }
 
-    // ── Floor management ──────────────────────────────────────────────────────
+    // â”€â”€ Floor management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let floors = { 1: { zones: [], cameras: [], walls: [] } };
     let currentFloor = 1;
 
@@ -94,7 +94,7 @@ export default function HospitalMapEditor() {
       });
     }
 
-    // ── Auto-save ─────────────────────────────────────────────────────────────
+    // â”€â”€ Auto-save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let _autoSaveTimer = null;
     let _autoSaveWriteId = 0;
 
@@ -140,10 +140,10 @@ export default function HospitalMapEditor() {
           cameras = JSON.parse(JSON.stringify(d.cameras));
           walls = JSON.parse(JSON.stringify(d.walls));
         }
-      } catch (e) { /* corrupt – start fresh */ }
+      } catch { /* corrupt â€“ start fresh */ }
     }
 
-    // ── History ───────────────────────────────────────────────────────────────
+    // â”€â”€ History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let historyStack = [], historyIndex = -1;
 
     function snapshot() { return JSON.stringify({ zones, cameras, walls }); }
@@ -191,7 +191,7 @@ export default function HospitalMapEditor() {
     };
     document.addEventListener('keydown', keyHandler);
 
-    // ── Canvas render ─────────────────────────────────────────────────────────
+    // â”€â”€ Canvas render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let zoomLevel = 1;
     let panX = 0;
     let panY = 0;
@@ -498,7 +498,7 @@ export default function HospitalMapEditor() {
       });
     });
 
-    // ── Tool switching ─────────────────────────────────────────────────────────
+    // â”€â”€ Tool switching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window._hme_setTool = function (t) {
       tool = t;
       document.querySelectorAll('#hme-toolbar button[data-tool]').forEach(b => b.classList.remove('hme-active'));
@@ -507,7 +507,7 @@ export default function HospitalMapEditor() {
       canvas.style.cursor = t === 'draw' ? 'crosshair' : 'default';
     };
 
-    // ── Properties panel ────────────────────────────────────────────────────────
+    // â”€â”€ Properties panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function showProps() {
       const p = document.getElementById('hme-props-body');
       if (!p) return;
@@ -519,7 +519,7 @@ export default function HospitalMapEditor() {
         p.innerHTML = `
           <div class="hme-prop-row"><div class="hme-prop-label">Label</div><input class="hme-prop-input" value="${selected.label}" onchange="selected_hme_obj.label=this.value;window._hme_render()"></div>
           <div class="hme-prop-row"><div class="hme-prop-label">Position</div><div class="hme-prop-val">${selected.x}, ${selected.y}</div></div>
-          <div class="hme-prop-row"><div class="hme-prop-label">Size</div><div class="hme-prop-val">${selected.w} × ${selected.h}</div></div>
+          <div class="hme-prop-row"><div class="hme-prop-label">Size</div><div class="hme-prop-val">${selected.w} Ã— ${selected.h}</div></div>
           <div class="hme-prop-row"><div class="hme-prop-label">Color</div><input type="color" value="${selected.color}" style="width:100%;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;background:transparent;" onchange="selected_hme_obj.color=this.value;window._hme_render()"></div>`;
         window.selected_hme_obj = selected;
         const d = document.createElement('button');
@@ -559,7 +559,7 @@ export default function HospitalMapEditor() {
     window._hme_redo = redo;
     window._hme_addFloor = addFloor;
 
-    // ── Export / Import ────────────────────────────────────────────────────────
+    // â”€â”€ Export / Import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window._hme_exportJSON = function () {
       saveCurrentFloor();
       const floorsArr = Object.keys(floors).sort((a, b) => a - b).map(f => ({
@@ -571,7 +571,7 @@ export default function HospitalMapEditor() {
       const data = JSON.stringify({ floors: floorsArr, exportedAt: new Date().toISOString() }, null, 2);
       const a = document.createElement('a');
       a.href = 'data:application/json,' + encodeURIComponent(data);
-      a.download = 'hospital-map.json'; a.click();
+      a.download = 'rehab-facility-map.json'; a.click();
     };
 
     window._hme_importJSON = function (input) {
@@ -591,19 +591,19 @@ export default function HospitalMapEditor() {
             cameras = JSON.parse(JSON.stringify(fd.cameras));
             walls = JSON.parse(JSON.stringify(fd.walls));
             renderFloorTabs();
-            showToast('✓ Loaded ' + d.floors.length + ' floor(s)');
+            showToast('âœ“ Loaded ' + d.floors.length + ' floor(s)');
           } else if (d.zones || d.cameras || d.walls) {
             saveHistory();
             zones = Array.isArray(d.zones) ? d.zones : [];
             cameras = Array.isArray(d.cameras) ? d.cameras : [];
             walls = Array.isArray(d.walls) ? d.walls : [];
-            showToast('✓ Loaded ' + zones.length + ' zone(s)');
+            showToast('âœ“ Loaded ' + zones.length + ' zone(s)');
           } else {
             throw new Error('Unrecognised map JSON format');
           }
           selected = null; showProps(); render(); autoSave();
         } catch (err) {
-          showToast('✗ Could not load: ' + err.message, true);
+          showToast('âœ— Could not load: ' + err.message, true);
         }
         input.value = '';
       };
@@ -626,7 +626,7 @@ export default function HospitalMapEditor() {
 
     async function publishCurrentFloorToSystem() {
       if (!hospitalId) {
-        showToast('Could not publish without a hospital ID.', true);
+        showToast('Could not publish without a facility ID.', true);
         return;
       }
 
@@ -694,7 +694,7 @@ export default function HospitalMapEditor() {
 
     window._hme_publishFloor = publishCurrentFloorToSystem;
 
-    // ── Validate ───────────────────────────────────────────────────────────────
+    // â”€â”€ Validate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window._hme_validateMap = function () {
       saveCurrentFloor();
       const results = [];
@@ -706,33 +706,33 @@ export default function HospitalMapEditor() {
         const lbl = 'Floor ' + f;
         const exits = fz.filter(z => z.type === 'exit_door');
         if (exits.length === 0) {
-          results.push({ level: 'red', icon: '🚨', text: lbl + ': No Exit Door found.' });
+          results.push({ level: 'red', icon: 'ðŸš¨', text: lbl + ': No Exit Door found.' });
         } else {
-          results.push({ level: 'green', icon: '✅', text: lbl + ': ' + exits.length + ' Exit Door(s).' });
+          results.push({ level: 'green', icon: 'âœ…', text: lbl + ': ' + exits.length + ' Exit Door(s).' });
         }
         const critTypes = ['icu', 'emergency', 'surgery'];
         const crits = fz.filter(z => critTypes.includes(z.type));
         if (crits.length === 0) {
-          results.push({ level: 'green', icon: '✅', text: lbl + ': No critical zones.' });
+          results.push({ level: 'green', icon: 'âœ…', text: lbl + ': No critical zones.' });
         } else {
           crits.forEach(z => {
             const cx = z.x + z.w / 2, cy = z.y + z.h / 2;
             const covered = fc.some(cam => Math.hypot(cam.x - cx, cam.y - cy) < 120);
             results.push(covered
-              ? { level: 'green', icon: '✅', text: lbl + ': "' + z.label + '" has camera coverage.' }
-              : { level: 'red', icon: '🚨', text: lbl + ': "' + z.label + '" has NO camera coverage.' });
+              ? { level: 'green', icon: 'âœ…', text: lbl + ': "' + z.label + '" has camera coverage.' }
+              : { level: 'red', icon: 'ðŸš¨', text: lbl + ': "' + z.label + '" has NO camera coverage.' });
           });
         }
         const aeds = fz.filter(z => z.type === 'aed_station');
         results.push(aeds.length === 0
-          ? { level: 'yellow', icon: '⚠️', text: lbl + ': No AED Station found.' }
-          : { level: 'green', icon: '✅', text: lbl + ': ' + aeds.length + ' AED Station(s).' });
+          ? { level: 'yellow', icon: 'âš ï¸', text: lbl + ': No AED Station found.' }
+          : { level: 'green', icon: 'âœ…', text: lbl + ': ' + aeds.length + ' AED Station(s).' });
       });
       const reds = results.filter(r => r.level === 'red').length;
       const yellows = results.filter(r => r.level === 'yellow').length;
       const greens = results.filter(r => r.level === 'green').length;
       const publishableRooms = buildSystemRoomsFromFloor(currentFloor, floorData(currentFloor));
-      let html = `<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:14px;">🚨 ${reds} critical &nbsp;·&nbsp; ⚠️ ${yellows} warning(s) &nbsp;·&nbsp; ✅ ${greens} passing</div>`;
+      let html = `<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:14px;">ðŸš¨ ${reds} critical &nbsp;Â·&nbsp; âš ï¸ ${yellows} warning(s) &nbsp;Â·&nbsp; âœ… ${greens} passing</div>`;
       results.forEach(r => {
         const bg = r.level === 'red' ? 'rgba(239,68,68,0.1)' : r.level === 'yellow' ? 'rgba(245,158,11,0.1)' : 'rgba(34,197,94,0.08)';
         const border = r.level === 'red' ? 'rgba(239,68,68,0.3)' : r.level === 'yellow' ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)';
@@ -742,13 +742,13 @@ export default function HospitalMapEditor() {
       setPublishUiState({
         message: publishableRooms.length > 0
           ? `Floor ${currentFloor} will publish ${publishableRooms.length} mapped room(s) and replace any existing live data for this floor.`
-          : `Floor ${currentFloor} has no publishable mapped rooms yet. Add named zones like wards, labs, ICUs, or corridors first.`,
+          : `Floor ${currentFloor} has no publishable mapped rooms yet. Add named zones like guest suites, therapy suites, assessment rooms, or corridors first.`,
         disabled: publishableRooms.length === 0,
       });
       document.getElementById('hme-validate-modal').style.display = 'flex';
     };
 
-    // ── Toast ──────────────────────────────────────────────────────────────────
+    // â”€â”€ Toast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function showToast(msg, isError = false) {
       let t = document.getElementById('hme-toast');
       if (!t) {
@@ -765,11 +765,11 @@ export default function HospitalMapEditor() {
       t._tid = setTimeout(() => { t.style.opacity = '0'; }, 3000);
     }
 
-    // ── AI Modal ────────────────────────────────────────────────────────────────
+    // â”€â”€ AI Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let uploadedBase64 = null, uploadedMimeType = null;
     let _pendingAIResult = null; // Holds Gemini result before user confirms
 
-    // Zone type → internal type + color mapping
+    // Zone type â†’ internal type + color mapping
     const TYPE_MAP = {
       'ICU':                { type: 'icu',        color: '#D85A30' },
       'Emergency':          { type: 'emergency',  color: '#E24B4A' },
@@ -848,7 +848,7 @@ export default function HospitalMapEditor() {
     window._hme_setBgOpacity = setBgOpacity;
     window._hme_removeBg = removeBg;
 
-    // ── Instant JS-based layout generator (no AI needed) ──────────────────────
+    // â”€â”€ Instant JS-based layout generator (no AI needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window._hme_generateLayout = function () {
       const cw = canvas.width, ch = canvas.height;
 
@@ -933,7 +933,7 @@ export default function HospitalMapEditor() {
 
       selected = null; showProps(); render(); autoSave();
       window._hme_closeModal();
-      showToast('📐 Sample hospital layout generated — fine-tune as needed.');
+      showToast('ðŸ“ Sample hospital layout generated â€” fine-tune as needed.');
     };
 
     window._hme_analyzeImage = async function () {
@@ -949,10 +949,10 @@ export default function HospitalMapEditor() {
 
       // Animated progress steps
       const steps = [
-        '🔍 Reading blueprint layout...',
-        '🏥 Identifying zones and rooms...',
-        '📐 Mapping coordinates to grid...',
-        '✨ Finalizing zone positions...',
+        'ðŸ” Reading blueprint layout...',
+        'ðŸ¥ Identifying zones and rooms...',
+        'ðŸ“ Mapping coordinates to grid...',
+        'âœ¨ Finalizing zone positions...',
       ];
       let stepIdx = 0;
       if (status) { status.style.color = 'rgba(255,255,255,0.5)'; status.textContent = steps[0]; }
@@ -973,12 +973,12 @@ export default function HospitalMapEditor() {
 
         // Build preview summary
         let previewHtml = `<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:8px;">
-          Detected <strong style="color:white">${geminiZones.length}</strong> zones ·
-          <strong style="color:white">${geminiCams.length}</strong> cameras ·
+          Detected <strong style="color:white">${geminiZones.length}</strong> zones Â·
+          <strong style="color:white">${geminiCams.length}</strong> cameras Â·
           <strong style="color:white">${geminiWalls.length}</strong> walls
         </div>`;
 
-        // Group zones by type — types/colors come directly from Gemini
+        // Group zones by type â€” types/colors come directly from Gemini
         const byType = {};
         geminiZones.forEach(z => {
           const t = z.type || 'unknown';
@@ -989,7 +989,7 @@ export default function HospitalMapEditor() {
         Object.entries(byType).forEach(([type, info]) => {
           const c = info.color;
           previewHtml += `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;background:${c}22;border:0.5px solid ${c}66;color:rgba(255,255,255,0.85);">
-            <span style="width:7px;height:7px;border-radius:2px;background:${c};display:inline-block;"></span>${type} ×${info.count}</span>`;
+            <span style="width:7px;height:7px;border-radius:2px;background:${c};display:inline-block;"></span>${type} Ã—${info.count}</span>`;
         });
         previewHtml += '</div>';
 
@@ -1009,8 +1009,8 @@ export default function HospitalMapEditor() {
           status.style.color = '#f87171';
           const isKeyMissing = err.message.includes('VITE_GEMINI_API_KEY');
           status.innerHTML = isKeyMissing
-            ? '⚠ No API key — use <strong style="color:#c4b5fd;cursor:pointer;" onclick="window._hme_generateLayout()">Generate Sample Layout</strong> instead.'
-            : `✗ ${err.message} — or <strong style="color:#c4b5fd;cursor:pointer;" onclick="window._hme_generateLayout()">Generate Sample Layout</strong>`;
+            ? 'âš  No API key â€” use <strong style="color:#c4b5fd;cursor:pointer;" onclick="window._hme_generateLayout()">Generate Sample Layout</strong> instead.'
+            : `âœ— ${err.message} â€” or <strong style="color:#c4b5fd;cursor:pointer;" onclick="window._hme_generateLayout()">Generate Sample Layout</strong>`;
         }
         if (btn) btn.disabled = false;
         if (cancelBtn) cancelBtn.disabled = false;
@@ -1028,7 +1028,7 @@ export default function HospitalMapEditor() {
       const geminiCams  = firstFloor?.cameras || [];
       const geminiWalls = firstFloor?.walls || [];
 
-      // Gemini returns coordinates in fixed space: x 120–820 (range 700), y 80–420 (range 340)
+      // Gemini returns coordinates in fixed space: x 120â€“820 (range 700), y 80â€“420 (range 340)
       const ox = 120, ow = 700; // origin x, working width
       const oy = 80,  oh = 340; // origin y, working height
       const sx = cw / ow;       // x scale factor
@@ -1043,7 +1043,7 @@ export default function HospitalMapEditor() {
         walls.length = 0;
       }
 
-      // Place zones — types and colors come directly from Gemini
+      // Place zones â€” types and colors come directly from Gemini
       geminiZones.forEach(z => {
         zones.push({
           type:  z.type  || 'corridor',
@@ -1056,7 +1056,7 @@ export default function HospitalMapEditor() {
         });
       });
 
-      // Place cameras — angles already in radians from Gemini
+      // Place cameras â€” angles already in radians from Gemini
       geminiCams.forEach(c => {
         cameras.push({
           x:     Math.round((c.x - ox) * sx),
@@ -1066,7 +1066,7 @@ export default function HospitalMapEditor() {
         });
       });
 
-      // Place walls — new schema includes explicit wall segments
+      // Place walls â€” new schema includes explicit wall segments
       geminiWalls.forEach(w => {
         walls.push({
           x1: Math.round((w.x1 - ox) * sx),
@@ -1091,10 +1091,10 @@ export default function HospitalMapEditor() {
       autoSave();
 
       window._hme_closeModal();
-      showToast(`✓ AI built map: ${geminiZones.length} zones · ${geminiCams.length} cameras · ${geminiWalls.length} walls`);
+      showToast(`âœ“ AI built map: ${geminiZones.length} zones Â· ${geminiCams.length} cameras Â· ${geminiWalls.length} walls`);
     };
 
-    // ── Boot ───────────────────────────────────────────────────────────────────
+    // â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
     restoreDraftFromCloud().finally(() => {
@@ -1129,14 +1129,14 @@ export default function HospitalMapEditor() {
   }, [hospitalId]);
 
   const ZONE_TYPES = [
-    { type: 'icu', color: '#D85A30', label: 'ICU' },
-    { type: 'emergency', color: '#E24B4A', label: 'Emergency' },
-    { type: 'ward', color: '#378ADD', label: 'General Ward' },
-    { type: 'surgery', color: '#7F77DD', label: 'Surgery' },
+    { type: 'icu', color: '#D85A30', label: 'Intensive Rehab' },
+    { type: 'emergency', color: '#E24B4A', label: 'Rapid Response' },
+    { type: 'ward', color: '#378ADD', label: 'Guest Suite' },
+    { type: 'surgery', color: '#7F77DD', label: 'Therapy Suite' },
     { type: 'corridor', color: '#888780', label: 'Corridor' },
-    { type: 'reception', color: '#1D9E75', label: 'Reception' },
-    { type: 'lab', color: '#BA7517', label: 'Lab' },
-    { type: 'pharmacy', color: '#D4537E', label: 'Pharmacy' },
+    { type: 'reception', color: '#1D9E75', label: 'Front Desk' },
+    { type: 'lab', color: '#BA7517', label: 'Assessment Room' },
+    { type: 'pharmacy', color: '#D4537E', label: 'Med Storage' },
     { type: 'stairwell', color: '#444441', label: 'Stairwell' },
   ];
 
@@ -1156,21 +1156,21 @@ export default function HospitalMapEditor() {
       <div className="px-6 py-4 border-b border-white/[0.07] flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-lg font-bold text-white flex items-center gap-2">
-            <span className="text-2xl">🏥</span> Hospital Map Editor
+            <span className="text-2xl">ðŸ¢</span> Rehab Facility Map Editor
           </h1>
-          <p className="text-xs text-white/40 mt-0.5">Build and annotate multi-floor hospital layouts with AI-assisted import</p>
+          <p className="text-xs text-white/40 mt-0.5">Build and annotate multi-floor rehab and hospitality layouts with AI-assisted import</p>
         </div>
       </div>
 
       {/* Editor Container */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
-        {/* Sidebar – Zone Palette */}
+        {/* Sidebar â€“ Zone Palette */}
         <div className="w-44 shrink-0 flex flex-col border-r border-white/[0.07] bg-navy-800 overflow-y-auto">
           <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/40 border-b border-white/[0.07]">
             Zone Types
           </div>
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 px-3 pt-2 pb-1">Clinical</div>
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 px-3 pt-2 pb-1">Care & Guest</div>
           {ZONE_TYPES.map(z => (
             <div
               key={z.type}
@@ -1209,14 +1209,14 @@ export default function HospitalMapEditor() {
             <button id="hme-btn-camera" data-tool="camera" className="hme-tool-btn" onClick={() => window._hme_setTool('camera')}>Add Camera</button>
 
             <button className="hme-tool-btn" onClick={() => window._hme_clearAll()}>Clear All</button>
-            <button id="hme-btn-undo" className="hme-tool-btn" onClick={() => window._hme_undo()} disabled title="Undo (Ctrl+Z)">↩ Undo</button>
-            <button id="hme-btn-redo" className="hme-tool-btn" onClick={() => window._hme_redo()} disabled title="Redo (Ctrl+Y)">↪ Redo</button>
-            <button className="hme-tool-btn hme-btn-validate" onClick={() => window._hme_validateMap()}>✓ Validate</button>
+            <button id="hme-btn-undo" className="hme-tool-btn" onClick={() => window._hme_undo()} disabled title="Undo (Ctrl+Z)">â†© Undo</button>
+            <button id="hme-btn-redo" className="hme-tool-btn" onClick={() => window._hme_redo()} disabled title="Redo (Ctrl+Y)">â†ª Redo</button>
+            <button className="hme-tool-btn hme-btn-validate" onClick={() => window._hme_validateMap()}>âœ“ Validate</button>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' }}>
               <button className="hme-tool-btn" onClick={() => window._hme_exportJSON()}>Export JSON</button>
               <button className="hme-tool-btn" onClick={() => document.getElementById('hme-import-json-input').click()}>Import JSON</button>
               <input type="file" id="hme-import-json-input" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => window._hme_importJSON(e.target)} />
-              <span id="hme-autosave-indicator" style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', opacity: 0, transition: 'opacity 0.4s', whiteSpace: 'nowrap' }}>💾 Auto-saved</span>
+              <span id="hme-autosave-indicator" style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', opacity: 0, transition: 'opacity 0.4s', whiteSpace: 'nowrap' }}>ðŸ’¾ Auto-saved</span>
             </div>
           </div>
 
@@ -1245,14 +1245,14 @@ export default function HospitalMapEditor() {
 
             {/* Zoom Controls Overlay */}
             <div style={{ position: 'absolute', bottom: 20, right: 20, display: 'flex', background: 'rgba(13, 19, 38, 0.8)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, backdropFilter: 'blur(4px)', zIndex: 10 }}>
-               <button onClick={() => window._hme_zoom(-1)} style={{ padding: '6px 12px', fontSize: 13, color: 'rgba(255,255,255,0.8)', background: 'transparent', border: 'none', cursor: 'pointer', borderRight: '0.5px solid rgba(255,255,255,0.1)' }}>−</button>
+               <button onClick={() => window._hme_zoom(-1)} style={{ padding: '6px 12px', fontSize: 13, color: 'rgba(255,255,255,0.8)', background: 'transparent', border: 'none', cursor: 'pointer', borderRight: '0.5px solid rgba(255,255,255,0.1)' }}>âˆ’</button>
                <button onClick={() => window._hme_resetZoom()} style={{ padding: '6px 14px', fontSize: 11, color: 'rgba(255,255,255,0.8)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Reset</button>
                <button onClick={() => window._hme_zoom(1)} style={{ padding: '6px 12px', fontSize: 13, color: 'rgba(255,255,255,0.8)', background: 'transparent', border: 'none', cursor: 'pointer', borderLeft: '0.5px solid rgba(255,255,255,0.1)' }}>+</button>
             </div>
             
             {/* Pan Hint Overlay */}
             <div style={{ position: 'absolute', top: 20, left: 20, pointerEvents: 'none', background: 'rgba(0,0,0,0.4)', padding: '6px 12px', borderRadius: 20, border: '0.5px solid rgba(255,255,255,0.05)', fontSize: 10, color: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(2px)' }}>
-               💡 Scroll to zoom · Space+Drag or Middle-Click to pan
+               ðŸ’¡ Scroll to zoom Â· Space+Drag or Middle-Click to pan
             </div>
           </div>
         </div>
@@ -1272,10 +1272,10 @@ export default function HospitalMapEditor() {
           
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(139,92,246,0.2)', border: '0.5px solid rgba(139,92,246,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>✨</div>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(139,92,246,0.2)', border: '0.5px solid rgba(139,92,246,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>âœ¨</div>
             <h2 style={{ fontSize: 15, fontWeight: 700, color: 'white', margin: 0 }}>AI Blueprint Analyzer</h2>
           </div>
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 18, marginTop: 4 }}>Upload a hospital floor plan or blueprint — AI will read the layout and auto-generate all zones, rooms, and camera positions.</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 18, marginTop: 4 }}>Upload a hospital floor plan or blueprint â€” AI will read the layout and auto-generate all zones, rooms, and camera positions.</p>
 
           {/* Drop zone */}
           <div
@@ -1287,7 +1287,7 @@ export default function HospitalMapEditor() {
             style={{ border: '1.5px dashed rgba(139,92,246,0.35)', borderRadius: 10, padding: '22px 16px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', background: 'rgba(139,92,246,0.04)' }}
           >
             <div style={{ pointerEvents: 'none' }}>
-              <div style={{ color: 'rgba(139,92,246,0.8)', fontSize: 24, marginBottom: 8 }}>📄</div>
+              <div style={{ color: 'rgba(139,92,246,0.8)', fontSize: 24, marginBottom: 8 }}>ðŸ“„</div>
               <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Click to upload blueprint</div>
               <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>PNG, JPG up to 10MB</div>
             </div>
@@ -1326,7 +1326,7 @@ export default function HospitalMapEditor() {
       {/* Validate Modal */}
       <div id="hme-validate-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'none', alignItems: 'center', justifyContent: 'center', zIndex: 1010, backdropFilter: 'blur(4px)' }}>
         <div style={{ background: '#0d1326', borderRadius: 14, border: '0.5px solid rgba(255,255,255,0.1)', width: 460, maxWidth: '95vw', padding: 28, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 18, color: 'white' }}>🔍 Map Validation Report</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 18, color: 'white' }}>ðŸ” Map Validation Report</h2>
           <div id="hme-validate-content" />
           <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, border: '0.5px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
             <p id="hme-publish-status" style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.58)', lineHeight: 1.5 }}>
