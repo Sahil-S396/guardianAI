@@ -8,9 +8,9 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
  * @returns {Promise<Object>} Parsed Gemini response JSON
  */
 export async function callGeminiForAlert({ roomName, zone, floor, alertType, nearbyStaff, secondsSinceTrigger }) {
-  const staffList = nearbyStaff?.map(s => `${s.name} (${s.role})`).join(', ') || 'None found';
-  
-  const prompt = `Emergency in ${roomName}, Zone ${zone}, Floor ${floor}. Type: ${alertType === 'fire' ? 'Fire' : 'Fall'}. 
+  const staffList = nearbyStaff?.map((s) => `${s.name} (${s.role})`).join(', ') || 'None found';
+
+  const prompt = `Emergency in ${roomName}, Zone ${zone}, Floor ${floor}. Type: ${alertType === 'fire' ? 'Fire' : 'Fall'}.
 Nearby staff: ${staffList}. Time since trigger: ${secondsSinceTrigger}s.
 Return ONLY valid JSON with this exact structure:
 {
@@ -41,8 +41,7 @@ Return ONLY valid JSON with this exact structure:
 
     const data = await response.json();
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    
-    // Parse the JSON response
+
     const parsed = JSON.parse(rawText);
     return {
       severity: parsed.severity || 'high',
@@ -53,10 +52,9 @@ Return ONLY valid JSON with this exact structure:
     };
   } catch (error) {
     console.error('Gemini API call failed:', error);
-    // Return a safe fallback response
     return {
       severity: alertType === 'fire' ? 'critical' : 'high',
-      immediateAction: alertType === 'fire' 
+      immediateAction: alertType === 'fire'
         ? 'Activate fire alarm, evacuate the floor, and call 911 immediately.'
         : 'Assess patient for injuries, call for medical assistance, do not move patient unnecessarily.',
       suggestedResponder: 'Nearest available nurse or security personnel',

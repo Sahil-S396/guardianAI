@@ -1,0 +1,230 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
+import { db } from '../../firebase';
+import { useHospital } from '../../contexts/HospitalContext';
+import {
+  findNearestStaff,
+  getEscalationRemainingMs,
+} from '../../utils/staffTracker';
+
+const roleAccent = {
+  nurse: 'text-blue-300 border-blue-400/20 bg-blue-500/10',
+  admin: 'text-purple-300 border-purple-400/20 bg-purple-500/10',
+  security: 'text-accent-amber border-accent-amber/20 bg-accent-amber/10',
+};
+
+export default function ResponderPanel({ alert, room, title = 'Suggested Responder', compact = false }) {
+  const { hospitalId } = useHospital();
+  const [staff, setStaff] = useState([]);
+  const [staffLocations, setStaffLocations] = useState([]);
+  const [floorMaps, setFloorMaps] = useState([]);
+  const [assigningId, setAssigningId] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, []);
+
+  useEffect(() => {
+    if (!hospitalId) {
+      return undefined;
+    }
+
+    const unsub = onSnapshot(collection(db, `hospitals/${hospitalId}/staff`), (snap) => {
+      setStaff(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+    });
+
+    return unsub;
+  }, [hospitalId]);
+
+  useEffect(() => {
+    if (!hospitalId) {
+      return undefined;
+    }
+
+    const unsub = onSnapshot(collection(db, `hospitals/${hospitalId}/staffLocations`), (snap) => {
+      setStaffLocations(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+    });
+
+    return unsub;
+  }, [hospitalId]);
+
+  useEffect(() => {
+    if (!hospitalId) {
+      return undefined;
+    }
+
+    const unsub = onSnapshot(collection(db, `hospitals/${hospitalId}/floorMaps`), (snap) => {
+      setFloorMaps(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+    });
+
+    return unsub;
+  }, [hospitalId]);
+
+  const ranking = useMemo(() => (
+    findNearestStaff({
+      hazardZoneId: alert?.hazardZoneId || alert?.roomMapNodeId || room?.mapNodeId,
+      room,
+      staff,
+      staffLocations,
+      floorMaps,
+      now,
+    })
+  ), [alert?.hazardZoneId, alert?.roomMapNodeId, floorMaps, now, room, staff, staffLocations]);
+
+  const remainingMs = getEscalationRemainingMs(alert, now);
+  const countdownSeconds = Math.ceil(remainingMs / 1000);
+  const progressPercent = Math.max(0, Math.min(100, (remainingMs / 90_000) * 100));
+  const responders = ranking.ranked.slice(0, compact ? 3 : 5);
+  const assignedStaffId = alert?.assignedStaffId || alert?.acknowledgedBy;
+
+  const handleAssign = async (member) => {
+    if (!hospitalId || !alert?.id) {
+      return;
+    }
+
+    setAssigningId(member.id);
+    try {
+      const alertPatch = {
+        assignedStaffId: member.id,
+        assignedStaffName: member.name,
+        assignedStaffRole: member.role || 'staff',
+        assignedAt: serverTimestamp(),
+      };
+
+      if (alert.status === 'active') {
+        alertPatch.status = 'acknowledged';
+        alertPatch.acknowledgedAt = serverTimestamp();
+        alertPatch.acknowledgedBy = member.id;
+      }
+
+      await updateDoc(doc(db, `hospitals/${hospitalId}/alerts`, alert.id), alertPatch);
+      await setDoc(
+        doc(db, `hospitals/${hospitalId}/staff`, member.id),
+        {
+          available: member.available ?? true,
+          assignedAlertId: alert.id,
+          assignedAt: serverTimestamp(),
+          lastAssignedRoomId: room?.id || alert.roomId || null,
+        },
+        { merge: true }
+      );
+      await setDoc(
+        doc(db, `hospitals/${hospitalId}/staffLocations`, member.id),
+        {
+          available: member.available ?? true,
+          assignedAlertId: alert.id,
+          assignmentStatus: 'assigned',
+          lastCheckInAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error('Assign responder failed:', error);
+    } finally {
+      setAssigningId(null);
+    }
+  };
+
+  return (
+    <div className={`glass-card border border-white/10 ${compact ? 'p-4' : 'p-5'}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">{title}</p>
+          <h3 className="mt-1 text-lg font-semibold text-white">
+            {responders[0]?.name || 'No nearby staff yet'}
+          </h3>
+          <p className="mt-1 text-sm text-white/50">
+            {responders[0]
+              ? `${responders[0].estimatedResponseTime} response from ${responders[0].distanceLabel.toLowerCase()}`
+              : 'Waiting for a live check-in or simulation update.'}
+          </p>
+        </div>
+
+        <div className="min-w-[120px] text-right">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-white/35">Auto-escalation</p>
+          <p className={`mt-1 text-2xl font-black ${remainingMs > 15_000 ? 'text-accent-red' : 'text-orange-300'}`}>
+            {alert?.status === 'active' ? `${countdownSeconds}s` : alert?.status}
+          </p>
+        </div>
+      </div>
+
+      {alert?.status === 'active' && (
+        <div className="mt-4">
+          <div className="h-2 overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-accent-red via-orange-400 to-accent-amber transition-all duration-1000"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {responders.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-5 text-sm text-white/45">
+          No available staff with a current location. Have someone scan `checkin.html` or switch the top bar to simulation mode.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {responders.map((member, index) => (
+            <div
+              key={member.id}
+              className={`rounded-2xl border px-4 py-3 transition ${
+                index === 0
+                  ? 'border-emerald-400/20 bg-emerald-500/10'
+                  : 'border-white/8 bg-white/[0.03]'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-white">{index + 1}. {member.name}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${roleAccent[member.role] || 'border-white/10 bg-white/5 text-white/60'}`}>
+                      {member.role || 'staff'}
+                    </span>
+                    {!member.isRecent && (
+                      <span className="rounded-full border border-orange-400/20 bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-300">
+                        estimated
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-white/60">
+                    {member.zone} · Floor {member.floor}
+                  </p>
+                  <p className="mt-1 text-xs text-white/40">
+                    {member.distanceLabel} · ETA {member.estimatedResponseTime}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleAssign(member)}
+                  disabled={assigningId === member.id || assignedStaffId === member.id}
+                  className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    assignedStaffId === member.id
+                      ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-300'
+                      : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
+                >
+                  {assignedStaffId === member.id
+                    ? 'Assigned'
+                    : assigningId === member.id
+                    ? 'Assigning...'
+                    : 'Assign'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

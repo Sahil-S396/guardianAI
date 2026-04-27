@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, orderBy, where, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import { callGeminiForAlert } from '../gemini';
@@ -7,43 +7,43 @@ import { callGeminiForAlert } from '../gemini';
 const DRILL_SCENARIOS = [
   {
     id: 'fire-icu',
-    label: 'ICU Fire Emergency',
+    label: 'Intensive Rehab Fire Emergency',
     type: 'fire',
-    roomName: 'ICU Bay 3',
+    roomName: 'Intensive Rehab Bay 3',
     zone: 'A',
     floor: '3',
-    description: 'Simulates a fire alert in a high-acuity ICU environment',
+    description: 'Simulates a fire alert in a high-support rehab environment',
     icon: '🔥',
   },
   {
     id: 'fall-ward',
-    label: 'Ward Patient Fall',
+    label: 'Guest Suite Fall',
     type: 'fall',
-    roomName: 'Ward 204',
+    roomName: 'Guest Suite 204',
     zone: 'B',
     floor: '2',
-    description: 'Simulates a patient fall trigger in a general ward',
+    description: 'Simulates a guest or resident fall trigger in a rehab suite',
     icon: '🚨',
   },
   {
     id: 'fire-pharmacy',
-    label: 'Pharmacy Fire',
+    label: 'Med Storage Fire',
     type: 'fire',
-    roomName: 'Pharmacy Storage',
+    roomName: 'Med Storage',
     zone: 'C',
     floor: '1',
-    description: 'Tests response protocols for a fire in the pharmacy',
+    description: 'Tests response protocols for a fire in the medication storage area',
     icon: '💊🔥',
   },
   {
     id: 'fall-er',
-    label: 'ER Fall Detection',
+    label: 'Front Desk Fall Detection',
     type: 'fall',
-    roomName: 'ER Room 12',
+    roomName: 'Front Desk Lobby',
     zone: 'A',
     floor: '1',
-    description: 'Simulates a fall trigger in the Emergency Room',
-    icon: '🏥',
+    description: 'Simulates a fall trigger in a guest-facing arrival area',
+    icon: '🏢',
   },
   {
     id: 'fire-server-room',
@@ -60,10 +60,10 @@ const DRILL_SCENARIOS = [
 export default function Drill() {
   const { drillMode, setDrillMode, hospitalId } = useHospital();
   const [staff, setStaff] = useState([]);
-  const [running, setRunning] = useState(null); // scenario id
-  const [results, setResults] = useState({}); // scenarioId → gemini response
-  const [countdown, setCountdown] = useState(null); // { scenarioId, progress }
-  const [drillLog, setDrillLog] = useState([]); // [{text, type, ts}]
+  const [running, setRunning] = useState(null);
+  const [results, setResults] = useState({});
+  const [countdown, setCountdown] = useState(null);
+  const [drillLog, setDrillLog] = useState([]);
 
   useEffect(() => {
     if (!hospitalId) return;
@@ -87,7 +87,6 @@ export default function Drill() {
     setRunning(scenario.id);
     addLog(`🎯 Starting drill: ${scenario.label}`, 'info');
 
-    // Countdown simulation
     let t = 40;
     if (scenario.type === 'fall') {
       const interval = setInterval(() => {
@@ -96,13 +95,13 @@ export default function Drill() {
         if (t <= 0) {
           clearInterval(interval);
           setCountdown(null);
-          addLog(`⚑ Fall timer expired for ${scenario.roomName} — Alert would be created`, 'alert');
+          addLog(`⚑ Fall timer expired for ${scenario.roomName} - alert would be created`, 'alert');
         }
-      }, 100); // 10x speed for drill
+      }, 100);
     }
 
     try {
-      addLog(`📡 Calling Gemini AI for ${scenario.roomName}…`, 'info');
+      addLog(`📡 Calling Gemini AI for ${scenario.roomName}...`, 'info');
       const geminiResponse = await callGeminiForAlert({
         roomName: scenario.roomName,
         zone: scenario.zone,
@@ -113,10 +112,10 @@ export default function Drill() {
       });
 
       setResults((prev) => ({ ...prev, [scenario.id]: geminiResponse }));
-      addLog(`✅ Gemini response: Severity=${geminiResponse.severity}, Evacuate=${geminiResponse.evacuationRequired}`, 'success');
+      addLog(`✓ Gemini response: Severity=${geminiResponse.severity}, Evacuate=${geminiResponse.evacuationRequired}`, 'success');
       addLog(`👤 Suggested responder: ${geminiResponse.suggestedResponder}`, 'info');
     } catch (err) {
-      addLog(`❌ Gemini API error: ${err.message}`, 'error');
+      addLog(`✕ Gemini API error: ${err.message}`, 'error');
     } finally {
       setRunning(null);
       setCountdown(null);
@@ -126,12 +125,11 @@ export default function Drill() {
   const clearResults = () => {
     setResults({});
     setDrillLog([]);
-    addLog('🗑 Drill results cleared', 'info');
+    addLog('Drill results cleared', 'info');
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Drill Mode Simulator</h1>
@@ -140,14 +138,13 @@ export default function Drill() {
           </p>
         </div>
 
-        {/* Drill mode toggle */}
         <div className="flex items-center gap-3">
           <span className="text-sm text-white/60">Drill Mode</span>
           <button
             id="drill-mode-toggle"
             onClick={() => {
               setDrillMode(!drillMode);
-              addLog(drillMode ? '🔴 Drill mode deactivated' : '🟡 Drill mode ACTIVATED — amber UI enabled', drillMode ? 'info' : 'alert');
+              addLog(drillMode ? 'Drill mode deactivated' : 'Drill mode activated - amber UI enabled', drillMode ? 'info' : 'alert');
             }}
             className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-300 ${
               drillMode ? 'bg-accent-amber' : 'bg-white/15'
@@ -165,7 +162,6 @@ export default function Drill() {
         </div>
       </div>
 
-      {/* Drill mode warning */}
       {!drillMode && (
         <div className="alert-banner-fall">
           <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -182,14 +178,13 @@ export default function Drill() {
         <div className="p-4 rounded-lg bg-accent-amber/10 border border-accent-amber/30 flex items-center gap-3">
           <span className="glow-dot-amber animate-ping-slow" />
           <div>
-            <p className="text-sm font-bold text-accent-amber">🎯 DRILL MODE ACTIVE</p>
+            <p className="text-sm font-bold text-accent-amber">DRILL MODE ACTIVE</p>
             <p className="text-xs text-accent-amber/70">All alerts below are labeled as drills. No real escalations will occur.</p>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Scenarios */}
         <div className="xl:col-span-2 space-y-4">
           <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Emergency Scenarios</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -220,11 +215,10 @@ export default function Drill() {
                     </span>
                   </div>
 
-                  {/* Countdown bar */}
                   {isCountdown && (
                     <div>
                       <div className="flex justify-between text-[10px] text-accent-amber mb-1">
-                        <span>Fall countdown running (10x speed)…</span>
+                        <span>Fall countdown running (10x speed)...</span>
                         <span>{countdown.progress}%</span>
                       </div>
                       <div className="progress-bar-track">
@@ -233,7 +227,6 @@ export default function Drill() {
                     </div>
                   )}
 
-                  {/* Gemini result */}
                   {result && (
                     <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-xs space-y-1">
                       <div className="flex justify-between">
@@ -266,7 +259,7 @@ export default function Drill() {
                     {isRunning ? (
                       <span className="flex items-center justify-center gap-2">
                         <div className="w-3 h-3 rounded-full border border-accent-amber/30 border-t-accent-amber animate-spin" />
-                        Running…
+                        Running...
                       </span>
                     ) : result ? '▶ Re-run Scenario' : '▶ Run Scenario'}
                   </button>
@@ -286,7 +279,6 @@ export default function Drill() {
           )}
         </div>
 
-        {/* Drill Activity Log */}
         <div className="glass-card p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Activity Log</h2>

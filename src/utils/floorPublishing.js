@@ -7,11 +7,42 @@ const NON_ROOM_ZONE_TYPES = new Set([
   'camera',
 ]);
 
+const ZONE_TYPE_LABELS = {
+  icu: 'Intensive Rehab',
+  emergency: 'Rapid Response',
+  ward: 'Guest Suite',
+  surgery: 'Therapy Suite',
+  corridor: 'Corridor',
+  reception: 'Front Desk',
+  lab: 'Assessment Room',
+  pharmacy: 'Med Storage',
+  stairwell: 'Stairwell',
+  exit_door: 'Exit Door',
+  entry_door: 'Entry Door',
+  aed_station: 'AED Station',
+  fire_ext: 'Fire Extinguisher',
+  hazard: 'Hazard Point',
+  elevator: 'Elevator',
+  camera: 'Camera',
+  other: 'Other',
+};
+
 function slugify(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function buildMapZoneNodeId(floorNumber, zone, index) {
+  const floor = String(floorNumber ?? '').trim() || '0';
+  const type = String(zone?.type || 'other')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const label = slugify(zone?.label || type || 'zone') || 'zone';
+
+  return `F${floor}_${String(index + 1).padStart(2, '0')}_${type}_${label}`;
 }
 
 export function sortFloorLabels(a, b) {
@@ -22,7 +53,13 @@ export function sortFloorLabels(a, b) {
 }
 
 export function formatZoneType(type) {
-  return String(type || 'other')
+  const normalized = String(type || 'other').trim();
+  const lookupKey = normalized.toLowerCase().replace(/[\s-]+/g, '_');
+  if (ZONE_TYPE_LABELS[lookupKey]) {
+    return ZONE_TYPE_LABELS[lookupKey];
+  }
+
+  return normalized
     .split('_')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -40,6 +77,7 @@ export function buildSystemRoomsFromFloor(floorNumber, floorData) {
       const mappedType = formatZoneType(zone.type);
       const numericLabel = name.replace(/[^0-9]/g, '');
       const shortLabel = numericLabel || name.slice(0, 10);
+      const mapNodeId = buildMapZoneNodeId(floor, zone, index);
 
       return {
         id: `map-floor-${floor}-${String(index + 1).padStart(2, '0')}-${slugify(name) || 'zone'}`,
@@ -51,12 +89,14 @@ export function buildSystemRoomsFromFloor(floorNumber, floorData) {
         status: 'clear',
         source: 'map-editor',
         mapZoneType: zone.type || 'other',
+        mapNodeId,
         mapGeometry: {
           x: zone.x ?? 0,
           y: zone.y ?? 0,
           w: zone.w ?? 0,
           h: zone.h ?? 0,
           color: zone.color || '#888780',
+          nodeId: mapNodeId,
         },
         sortOrder: index,
       };

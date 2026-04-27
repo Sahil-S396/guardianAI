@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import RoomCard from '../components/RoomCard';
-import { sortFloorLabels } from '../utils/floorPublishing';
+import { formatZoneType, sortFloorLabels } from '../utils/floorPublishing';
 
 export default function Rooms() {
   const { hospitalId, drillMode } = useHospital();
@@ -98,7 +98,7 @@ export default function Rooms() {
           className="guardian-select min-w-[130px]"
         >
           <option value="all">All Zones</option>
-          {zones.map((zone) => <option key={zone} value={zone}>Zone {zone}</option>)}
+          {zones.map((zone) => <option key={zone} value={zone}>Zone {formatZoneType(zone)}</option>)}
         </select>
         <select
           id="rooms-filter-status"

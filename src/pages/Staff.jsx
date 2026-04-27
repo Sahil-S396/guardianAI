@@ -1,84 +1,137 @@
-import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  collection,
+  doc,
+  deleteDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 
 const roleColors = {
-  nurse: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
-  admin: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
-  security: 'text-accent-amber bg-accent-amber/10 border-accent-amber/20',
+  nurse: 'border-blue-500/20 bg-blue-500/10 text-blue-300',
+  admin: 'border-purple-500/20 bg-purple-500/10 text-purple-300',
+  security: 'border-accent-amber/20 bg-accent-amber/10 text-accent-amber',
 };
 
 const roleIcons = {
-  nurse: '🏥',
-  admin: '👔',
-  security: '🔒',
+  nurse: 'RN',
+  admin: 'MD',
+  security: 'SEC',
 };
 
 export default function Staff() {
-  const { hospitalId } = useHospital();
+  const { hospitalId, trackingMode } = useHospital();
   const [staff, setStaff] = useState([]);
+  const [staffLocations, setStaffLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState('all');
   const [filterFloor, setFilterFloor] = useState('all');
   const [filterAvail, setFilterAvail] = useState('all');
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
-  
+
   const [rooms, setRooms] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newStaff, setNewStaff] = useState({ name: '', employeeId: '', role: 'nurse', floor: '', zone: '' });
   const [adding, setAdding] = useState(false);
 
+  // ── CONFLICT 2 RESOLVED: Both useEffects merged ──────────────────────────
+  // Staff fetching (from main)
   useEffect(() => {
-    if (!hospitalId) return;
-    const qStaff = query(collection(db, `hospitals/${hospitalId}/staff`), orderBy('name'));
-    const unsubStaff = onSnapshot(qStaff, (snap) => {
-      setStaff(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-
-    const qRooms = query(collection(db, `hospitals/${hospitalId}/rooms`));
-    const unsubRooms = onSnapshot(qRooms, (snap) => {
-      setRooms(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => {
-      unsubStaff();
-      unsubRooms();
-    };
+    if (!hospitalId) return undefined;
+    const unsub = onSnapshot(
+      query(collection(db, `hospitals/${hospitalId}/staff`), orderBy('name')),
+      (snap) => {
+        setStaff(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      }
+    );
+    return unsub;
   }, [hospitalId]);
 
-  const availableFloors = [...new Set(rooms.map(r => String(r.floor)))].sort();
+  // staffLocations fetching (from main)
+  useEffect(() => {
+    if (!hospitalId) return undefined;
+    const unsub = onSnapshot(
+      collection(db, `hospitals/${hospitalId}/staffLocations`),
+      (snap) => {
+        setStaffLocations(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+    );
+    return unsub;
+  }, [hospitalId]);
+
+  // Rooms fetching (from feature/ayush)
+  useEffect(() => {
+    if (!hospitalId) return;
+    const unsub = onSnapshot(
+      collection(db, `hospitals/${hospitalId}/rooms`),
+      (snap) => {
+        setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+    );
+    return unsub;
+  }, [hospitalId]);
+
+  // ── CONFLICT 3 RESOLVED: main's useMemo staffRows kept ───────────────────
+  const staffRows = useMemo(() => {
+    const locationMap = new Map(staffLocations.map((l) => [l.staffId || l.id, l]));
+    return staff.map((member) => {
+      const live = locationMap.get(member.id);
+      return {
+        ...member,
+        floor: live?.floor ?? member.floor ?? '-',
+        zone: live?.zone ?? member.zone ?? 'Unknown',
+        available: live?.available ?? member.available ?? true,
+        locationSource: live?.locationSource || member.locationSource || 'directory',
+      };
+    });
+  }, [staff, staffLocations]);
+
+  const floors = [...new Set(staffRows.map((m) => m.floor).filter(Boolean))].sort();
+
+  // Derived from rooms (feature/ayush)
+  const availableFloors = [...new Set(rooms.map((r) => String(r.floor)))].sort();
   const selectedFloor = newStaff.floor || availableFloors[0] || '';
-  const availableRoomsForFloor = rooms.filter(r => String(r.floor) === selectedFloor).sort((a,b) => (a.name || a.zone || '').localeCompare(b.name || b.zone || ''));
+  const availableRoomsForFloor = rooms
+    .filter((r) => String(r.floor) === selectedFloor)
+    .sort((a, b) => (a.name || a.zone || '').localeCompare(b.name || b.zone || ''));
 
-  const floors = [...new Set(staff.map((s) => s.floor))].sort();
-
-  const filtered = staff.filter((s) => {
-    if (filterRole !== 'all' && s.role !== filterRole) return false;
-    if (filterFloor !== 'all' && s.floor !== filterFloor) return false;
-    if (filterAvail === 'available' && !s.available) return false;
-    if (filterAvail === 'busy' && s.available) return false;
-    if (search && !s.name?.toLowerCase().includes(search.toLowerCase())) return false;
+  const filtered = staffRows.filter((member) => {
+    if (filterRole !== 'all' && member.role !== filterRole) return false;
+    if (filterFloor !== 'all' && member.floor !== filterFloor) return false;
+    if (filterAvail === 'available' && !member.available) return false;
+    if (filterAvail === 'busy' && member.available) return false;
+    if (search && !member.name?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  const toggleAvailability = async (staffMember) => {
-    setUpdatingId(staffMember.id);
+  const toggleAvailability = async (member) => {
+    setUpdatingId(member.id);
     try {
-      await updateDoc(doc(db, `hospitals/${hospitalId}/staff`, staffMember.id), {
-        available: !staffMember.available,
+      await updateDoc(doc(db, `hospitals/${hospitalId}/staff`, member.id), {
+        available: !member.available,
       });
-    } catch (err) {
-      console.error('Toggle availability failed:', err);
+      await setDoc(
+        doc(db, `hospitals/${hospitalId}/staffLocations`, member.id),
+        { available: !member.available },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error('Toggle availability failed:', error);
     } finally {
       setUpdatingId(null);
     }
   };
 
+  // Delete handler (from feature/ayush)
   const handleDeleteStaff = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this staff member?")) return;
+    if (!window.confirm('Are you sure you want to delete this staff member?')) return;
     setUpdatingId(id);
     try {
       await deleteDoc(doc(db, `hospitals/${hospitalId}/staff`, id));
@@ -89,15 +142,15 @@ export default function Staff() {
     }
   };
 
+  // Add handler (from feature/ayush)
   const handleAddStaff = async (e) => {
     e.preventDefault();
     if (!newStaff.name || !newStaff.employeeId || !newStaff.role || !selectedFloor || !newStaff.zone) {
-      alert("Please fill out all fields including Floor and Room!");
+      alert('Please fill out all fields including Floor and Room!');
       return;
     }
     setAdding(true);
     try {
-      // Use employeeId as the firestore doc ID to fulfill "with ID" requirement
       await setDoc(doc(db, `hospitals/${hospitalId}/staff`, newStaff.employeeId), {
         name: newStaff.name,
         role: newStaff.role,
@@ -114,23 +167,25 @@ export default function Staff() {
     }
   };
 
-  const available = staff.filter((s) => s.available).length;
+  const available = staffRows.filter((m) => m.available).length;
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-start justify-between">
+
+      {/* ── CONFLICT 4 RESOLVED: Both header sections merged ── */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Staff Directory</h1>
-          <p className="text-sm text-white/40 mt-0.5">
-            {staff.length} staff · {available} available · {staff.length - available} busy
+          <p className="mt-0.5 text-sm text-white/40">
+            {staffRows.length} staff · {available} available · {staffRows.length - available} busy
           </p>
         </div>
-        {/* Role breakdown and Add Button */}
+
+        {/* Role breakdown + Add Staff button (feature/ayush) */}
         <div className="flex items-center gap-3">
           <div className="hidden md:flex gap-3">
             {['nurse', 'admin', 'security'].map((role) => {
-              const count = staff.filter((s) => s.role === role).length;
+              const count = staffRows.filter((s) => s.role === role).length;
               return (
                 <div key={role} className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${roleColors[role]}`}>
                   {roleIcons[role]} {count} {role}s
@@ -138,13 +193,29 @@ export default function Staff() {
               );
             })}
           </div>
-          <button onClick={() => setShowAddForm(true)} className="btn-primary !py-1.5 !text-xs mt-1 md:mt-0">
+          <button onClick={() => setShowAddForm(true)} className="btn-primary !py-1.5 !text-xs">
             + Add Staff
           </button>
         </div>
       </div>
 
-      {/* Add Staff Form */}
+      {/* Tracking mode banner (main) */}
+      <div className="glass-card flex flex-wrap items-center justify-between gap-3 p-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">Tracking mode</p>
+          <p className="mt-1 text-sm text-white/65">
+            {trackingMode === 'simulation'
+              ? 'Simulation is moving stale staff every 30 seconds.'
+              : 'Live check-ins are driving the responder list.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a href="/checkin.html" className="btn-secondary text-xs">Open Check-in Page</a>
+          <a href="/qr-generator.html" className="btn-secondary text-xs">Open QR Generator</a>
+        </div>
+      </div>
+
+      {/* Add Staff Form (feature/ayush) */}
       {showAddForm && (
         <form onSubmit={handleAddStaff} className="glass-card p-4 space-y-4 shadow-xl border-accent-blue/30 bg-blue-500/5">
           <div className="flex items-center justify-between">
@@ -154,15 +225,15 @@ export default function Staff() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div>
               <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Full Name</label>
-              <input type="text" required value={newStaff.name} onChange={e => setNewStaff({...newStaff, name: e.target.value})} className="guardian-input py-2" placeholder="e.g. Sarah Connor" />
+              <input type="text" required value={newStaff.name} onChange={(e) => setNewStaff({ ...newStaff, name: e.target.value })} className="guardian-input py-2" placeholder="e.g. Sarah Connor" />
             </div>
             <div>
               <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Employee ID</label>
-              <input type="text" required value={newStaff.employeeId} onChange={e => setNewStaff({...newStaff, employeeId: e.target.value})} className="guardian-input py-2" placeholder="e.g. EMP-1049" />
+              <input type="text" required value={newStaff.employeeId} onChange={(e) => setNewStaff({ ...newStaff, employeeId: e.target.value })} className="guardian-input py-2" placeholder="e.g. EMP-1049" />
             </div>
             <div>
               <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Post / Role</label>
-              <select value={newStaff.role} onChange={e => setNewStaff({...newStaff, role: e.target.value})} className="guardian-select py-2">
+              <select value={newStaff.role} onChange={(e) => setNewStaff({ ...newStaff, role: e.target.value })} className="guardian-select py-2">
                 <option value="nurse">Nurse</option>
                 <option value="admin">Admin</option>
                 <option value="security">Security</option>
@@ -170,27 +241,23 @@ export default function Staff() {
             </div>
             <div>
               <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Floor</label>
-              <select value={selectedFloor} onChange={e => setNewStaff({...newStaff, floor: e.target.value, zone: ''})} className="guardian-select py-2">
-                {availableFloors.map(f => (
-                  <option key={f} value={f}>Floor {f}</option>
-                ))}
+              <select value={selectedFloor} onChange={(e) => setNewStaff({ ...newStaff, floor: e.target.value, zone: '' })} className="guardian-select py-2">
+                {availableFloors.map((f) => <option key={f} value={f}>Floor {f}</option>)}
                 {availableFloors.length === 0 && <option value="" disabled>No Floors</option>}
               </select>
             </div>
             <div>
               <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Room / Zone</label>
-              <select value={newStaff.zone} onChange={e => setNewStaff({...newStaff, zone: e.target.value})} className="guardian-select py-2">
+              <select value={newStaff.zone} onChange={(e) => setNewStaff({ ...newStaff, zone: e.target.value })} className="guardian-select py-2">
                 <option value="" disabled hidden>Select Room</option>
-                {availableRoomsForFloor.map(r => (
-                  <option key={r.id} value={r.name || r.zone}>{r.name || r.zone}</option>
-                ))}
+                {availableRoomsForFloor.map((r) => <option key={r.id} value={r.name || r.zone}>{r.name || r.zone}</option>)}
                 {availableRoomsForFloor.length === 0 && <option value="" disabled>No Rooms</option>}
               </select>
             </div>
           </div>
           <div className="flex justify-end pt-2">
             <button type="submit" disabled={adding} className="btn-primary">
-               {adding ? 'Saving...' : 'Save Staff Member'}
+              {adding ? 'Saving...' : 'Save Staff Member'}
             </button>
           </div>
         </form>
@@ -202,39 +269,38 @@ export default function Staff() {
           id="staff-search"
           type="search"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search staff…"
-          className="guardian-input flex-1 min-w-[180px]"
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search staff..."
+          className="guardian-input min-w-[180px] flex-1"
         />
-        <select id="staff-filter-role" value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="guardian-select">
+        <select id="staff-filter-role" value={filterRole} onChange={(event) => setFilterRole(event.target.value)} className="guardian-select">
           <option value="all">All Roles</option>
           <option value="nurse">Nurse</option>
           <option value="admin">Admin</option>
           <option value="security">Security</option>
         </select>
-        <select id="staff-filter-floor" value={filterFloor} onChange={(e) => setFilterFloor(e.target.value)} className="guardian-select">
+        <select id="staff-filter-floor" value={filterFloor} onChange={(event) => setFilterFloor(event.target.value)} className="guardian-select">
           <option value="all">All Floors</option>
-          {floors.map((f) => <option key={f} value={f}>Floor {f}</option>)}
+          {floors.map((floor) => <option key={floor} value={floor}>Floor {floor}</option>)}
         </select>
-        <select id="staff-filter-avail" value={filterAvail} onChange={(e) => setFilterAvail(e.target.value)} className="guardian-select">
+        <select id="staff-filter-avail" value={filterAvail} onChange={(event) => setFilterAvail(event.target.value)} className="guardian-select">
           <option value="all">All Availability</option>
           <option value="available">Available</option>
           <option value="busy">Busy</option>
         </select>
       </div>
 
-      {/* Table */}
       <div className="glass-card overflow-hidden">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-48 gap-3">
+          <div className="flex h-48 flex-col items-center justify-center gap-3">
             <div className="spinner" />
-            <p className="text-sm text-white/40">Loading staff…</p>
+            <p className="text-sm text-white/40">Loading staff...</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center p-12">
+          <div className="p-12 text-center">
             <p className="text-white/40">No staff match your filters.</p>
-            {staff.length === 0 && (
-              <p className="text-white/25 text-xs mt-2">Seed Firestore with staff data to get started.</p>
+            {staffRows.length === 0 && (
+              <p className="mt-2 text-xs text-white/25">Use the QR check-in page to create hackathon demo staff on the fly.</p>
             )}
           </div>
         ) : (
@@ -245,38 +311,46 @@ export default function Staff() {
                 <th>Role</th>
                 <th>Zone</th>
                 <th>Floor</th>
+                <th>Source</th>
                 <th>Availability</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((member) => (
-                <tr key={member.id} className={`${!member.available ? 'opacity-60' : ''}`}>
+                <tr key={member.id} className={!member.available ? 'opacity-60' : ''}>
                   <td>
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border ${roleColors[member.role]}`}>
-                        {member.name?.[0] ?? '?'}
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] font-bold ${roleColors[member.role] || 'border-white/10 bg-white/5 text-white/70'}`}>
+                        {roleIcons[member.role] || (member.name?.[0] ?? '?')}
                       </div>
                       <div>
                         <p className="text-sm font-medium text-white">{member.name}</p>
-                        <p className="text-xs text-white/40 font-mono">{member.id.slice(0, 8)}…</p>
+                        <p className="font-mono text-xs text-white/40">{member.id}</p>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${roleColors[member.role]}`}>
-                      {roleIcons[member.role]} {member.role}
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${roleColors[member.role] || 'border-white/10 bg-white/5 text-white/70'}`}>
+                      {member.role || 'staff'}
                     </span>
                   </td>
-                  <td><span className="text-sm text-white/70">Zone {member.zone}</span></td>
+                  <td><span className="text-sm text-white/70">{member.zone}</span></td>
                   <td><span className="text-sm text-white/70">Floor {member.floor}</span></td>
                   <td>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/55">
+                      {member.locationSource || 'directory'}
+                    </span>
+                  </td>
+                  <td>
                     {member.available ? (
-                      <span className="badge-clear">● Available</span>
+                      <span className="badge-clear">Available</span>
                     ) : (
-                      <span className="badge-alert">● Busy</span>
+                      <span className="badge-alert">Busy</span>
                     )}
                   </td>
+
+                  {/* ── CONFLICT 5 RESOLVED: Toggle + Delete buttons (feature/ayush) ── */}
                   <td>
                     <div className="flex items-center gap-2">
                       <button

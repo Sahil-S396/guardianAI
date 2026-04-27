@@ -4,7 +4,9 @@ import { doc, onSnapshot, updateDoc, serverTimestamp, getDoc } from 'firebase/fi
 import { db } from '../firebase';
 import { useHospital } from '../contexts/HospitalContext';
 import { useAuth } from '../contexts/AuthContext';
+import ResponderPanel from '../components/staff/ResponderPanel';
 import { formatTimestamp, formatDistanceToNow } from '../utils/time';
+import { formatZoneType } from '../utils/floorPublishing';
 
 export default function AlertDetail() {
   const { alertId } = useParams();
@@ -40,7 +42,9 @@ export default function AlertDetail() {
         const roomRef = doc(db, `hospitals/${hospitalId}/rooms`, alert.roomId);
         const snap = await getDoc(roomRef);
         if (snap.exists()) setRoom({ id: snap.id, ...snap.data() });
-      } catch {}
+      } catch (error) {
+        console.error('Room fetch failed:', error);
+      }
     };
     fetchRoom();
   }, [alert?.roomId, hospitalId]);
@@ -157,10 +161,17 @@ export default function AlertDetail() {
   const borderClass = alert.isDrill ? 'border-accent-amber/30' : isFire ? 'border-accent-red/30' : 'border-accent-amber/30';
   const bgGlow = alert.isDrill ? 'bg-drill-glow' : isFire ? 'bg-alert-glow' : '';
   const gemini = alert.geminiResponse;
-  const alertTime = alert.createdAt?.toDate?.() || new Date(alert.createdAt?.seconds * 1000 || Date.now());
+  const alertTime = alert.createdAt?.toDate?.() || new Date((alert.createdAt?.seconds || 0) * 1000);
   const canEscalate = !['escalated', 'resolved'].includes(alert.status);
   const canContain = ['active', 'acknowledged', 'escalated'].includes(alert.status);
   const canResolve = alert.status !== 'resolved';
+  const responderRoom = room || {
+    id: alert.roomId,
+    name: alert.roomName || alert.roomId,
+    floor: alert.roomFloor || '-',
+    zone: alert.roomZone || '-',
+    mapNodeId: alert.roomMapNodeId || alert.hazardZoneId || null,
+  };
 
   return (
     <div className={`space-y-6 animate-fade-in ${bgGlow}`}>
@@ -202,9 +213,9 @@ export default function AlertDetail() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: 'Room', value: room?.name || alert.roomId },
-                { label: 'Zone', value: room?.zone || '-' },
+                { label: 'Zone', value: room?.zone ? formatZoneType(room.zone) : '-' },
                 { label: 'Floor', value: room?.floor || '-' },
-                { label: 'Room Type', value: room?.type || '-' },
+                { label: 'Room Type', value: room?.type ? formatZoneType(room.type) : '-' },
                 { label: 'Event Type', value: alert.type?.toUpperCase() },
                 { label: 'Severity', value: gemini?.severity?.toUpperCase() || alert.severity?.toUpperCase() || '-' },
               ].map(({ label, value }) => (
@@ -271,6 +282,13 @@ export default function AlertDetail() {
         </div>
 
         <div className="space-y-4">
+          <ResponderPanel
+            alert={alert}
+            room={responderRoom}
+            title="Suggested Responder"
+            compact
+          />
+
           <div className="glass-card p-5">
             <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">Actions</h2>
             <div className="space-y-2">
