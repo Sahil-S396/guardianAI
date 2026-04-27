@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection,
   doc,
+  deleteDoc,
   onSnapshot,
   orderBy,
   query,
@@ -34,45 +35,72 @@ export default function Staff() {
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
 
+  const [rooms, setRooms] = useState([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newStaff, setNewStaff] = useState({ name: '', employeeId: '', role: 'nurse', floor: '', zone: '' });
+  const [adding, setAdding] = useState(false);
+
+  // ── CONFLICT 2 RESOLVED: Both useEffects merged ──────────────────────────
+  // Staff fetching (from main)
   useEffect(() => {
     if (!hospitalId) return undefined;
-
     const unsub = onSnapshot(
       query(collection(db, `hospitals/${hospitalId}/staff`), orderBy('name')),
       (snap) => {
-        setStaff(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+        setStaff(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoading(false);
       }
     );
-
     return unsub;
   }, [hospitalId]);
 
+  // staffLocations fetching (from main)
   useEffect(() => {
     if (!hospitalId) return undefined;
-
-    const unsub = onSnapshot(collection(db, `hospitals/${hospitalId}/staffLocations`), (snap) => {
-      setStaffLocations(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-    });
-
+    const unsub = onSnapshot(
+      collection(db, `hospitals/${hospitalId}/staffLocations`),
+      (snap) => {
+        setStaffLocations(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+    );
     return unsub;
   }, [hospitalId]);
 
+  // Rooms fetching (from feature/ayush)
+  useEffect(() => {
+    if (!hospitalId) return;
+    const unsub = onSnapshot(
+      collection(db, `hospitals/${hospitalId}/rooms`),
+      (snap) => {
+        setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+    );
+    return unsub;
+  }, [hospitalId]);
+
+  // ── CONFLICT 3 RESOLVED: main's useMemo staffRows kept ───────────────────
   const staffRows = useMemo(() => {
-    const locationMap = new Map(staffLocations.map((location) => [location.staffId || location.id, location]));
+    const locationMap = new Map(staffLocations.map((l) => [l.staffId || l.id, l]));
     return staff.map((member) => {
-      const liveLocation = locationMap.get(member.id);
+      const live = locationMap.get(member.id);
       return {
         ...member,
-        floor: liveLocation?.floor ?? member.floor ?? '-',
-        zone: liveLocation?.zone ?? member.zone ?? 'Unknown',
-        available: liveLocation?.available ?? member.available ?? true,
-        locationSource: liveLocation?.locationSource || member.locationSource || 'directory',
+        floor: live?.floor ?? member.floor ?? '-',
+        zone: live?.zone ?? member.zone ?? 'Unknown',
+        available: live?.available ?? member.available ?? true,
+        locationSource: live?.locationSource || member.locationSource || 'directory',
       };
     });
   }, [staff, staffLocations]);
 
-  const floors = [...new Set(staffRows.map((member) => member.floor).filter(Boolean))].sort();
+  const floors = [...new Set(staffRows.map((m) => m.floor).filter(Boolean))].sort();
+
+  // Derived from rooms (feature/ayush)
+  const availableFloors = [...new Set(rooms.map((r) => String(r.floor)))].sort();
+  const selectedFloor = newStaff.floor || availableFloors[0] || '';
+  const availableRoomsForFloor = rooms
+    .filter((r) => String(r.floor) === selectedFloor)
+    .sort((a, b) => (a.name || a.zone || '').localeCompare(b.name || b.zone || ''));
 
   const filtered = staffRows.filter((member) => {
     if (filterRole !== 'all' && member.role !== filterRole) return false;
@@ -89,9 +117,11 @@ export default function Staff() {
       await updateDoc(doc(db, `hospitals/${hospitalId}/staff`, member.id), {
         available: !member.available,
       });
-      await setDoc(doc(db, `hospitals/${hospitalId}/staffLocations`, member.id), {
-        available: !member.available,
-      }, { merge: true });
+      await setDoc(
+        doc(db, `hospitals/${hospitalId}/staffLocations`, member.id),
+        { available: !member.available },
+        { merge: true }
+      );
     } catch (error) {
       console.error('Toggle availability failed:', error);
     } finally {
@@ -99,10 +129,50 @@ export default function Staff() {
     }
   };
 
-  const available = staffRows.filter((member) => member.available).length;
+  // Delete handler (from feature/ayush)
+  const handleDeleteStaff = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this staff member?')) return;
+    setUpdatingId(id);
+    try {
+      await deleteDoc(doc(db, `hospitals/${hospitalId}/staff`, id));
+    } catch (err) {
+      console.error('Failed to delete staff:', err);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // Add handler (from feature/ayush)
+  const handleAddStaff = async (e) => {
+    e.preventDefault();
+    if (!newStaff.name || !newStaff.employeeId || !newStaff.role || !selectedFloor || !newStaff.zone) {
+      alert('Please fill out all fields including Floor and Room!');
+      return;
+    }
+    setAdding(true);
+    try {
+      await setDoc(doc(db, `hospitals/${hospitalId}/staff`, newStaff.employeeId), {
+        name: newStaff.name,
+        role: newStaff.role,
+        floor: selectedFloor,
+        zone: newStaff.zone,
+        available: true,
+      });
+      setShowAddForm(false);
+      setNewStaff({ name: '', employeeId: '', role: 'nurse', floor: '', zone: '' });
+    } catch (err) {
+      console.error('Failed to add staff:', err);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const available = staffRows.filter((m) => m.available).length;
 
   return (
     <div className="space-y-6 animate-fade-in">
+
+      {/* ── CONFLICT 4 RESOLVED: Both header sections merged ── */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Staff Directory</h1>
@@ -111,36 +181,90 @@ export default function Staff() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          {['nurse', 'admin', 'security'].map((role) => {
-            const count = staffRows.filter((member) => member.role === role).length;
-            return (
-              <div key={role} className={`rounded-lg border px-3 py-1.5 text-xs font-medium uppercase tracking-wider ${roleColors[role]}`}>
-                {roleIcons[role]} {count} {role}
-              </div>
-            );
-          })}
+        {/* Role breakdown + Add Staff button (feature/ayush) */}
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex gap-3">
+            {['nurse', 'admin', 'security'].map((role) => {
+              const count = staffRows.filter((s) => s.role === role).length;
+              return (
+                <div key={role} className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${roleColors[role]}`}>
+                  {roleIcons[role]} {count} {role}s
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={() => setShowAddForm(true)} className="btn-primary !py-1.5 !text-xs">
+            + Add Staff
+          </button>
         </div>
       </div>
 
+      {/* Tracking mode banner (main) */}
       <div className="glass-card flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">Tracking mode</p>
           <p className="mt-1 text-sm text-white/65">
-            {trackingMode === 'simulation' ? 'Simulation is moving stale staff every 30 seconds.' : 'Live check-ins are driving the responder list.'}
+            {trackingMode === 'simulation'
+              ? 'Simulation is moving stale staff every 30 seconds.'
+              : 'Live check-ins are driving the responder list.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href="/checkin.html" className="btn-secondary text-xs">
-            Open Check-in Page
-          </a>
-          <a href="/qr-generator.html" className="btn-secondary text-xs">
-            Open QR Generator
-          </a>
+          <a href="/checkin.html" className="btn-secondary text-xs">Open Check-in Page</a>
+          <a href="/qr-generator.html" className="btn-secondary text-xs">Open QR Generator</a>
         </div>
       </div>
 
-      <div className="glass-card flex flex-wrap gap-3 p-4">
+      {/* Add Staff Form (feature/ayush) */}
+      {showAddForm && (
+        <form onSubmit={handleAddStaff} className="glass-card p-4 space-y-4 shadow-xl border-accent-blue/30 bg-blue-500/5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Add New Staff Member</h3>
+            <button type="button" onClick={() => setShowAddForm(false)} className="text-white/40 hover:text-white transition">✕</button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Full Name</label>
+              <input type="text" required value={newStaff.name} onChange={(e) => setNewStaff({ ...newStaff, name: e.target.value })} className="guardian-input py-2" placeholder="e.g. Sarah Connor" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Employee ID</label>
+              <input type="text" required value={newStaff.employeeId} onChange={(e) => setNewStaff({ ...newStaff, employeeId: e.target.value })} className="guardian-input py-2" placeholder="e.g. EMP-1049" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Post / Role</label>
+              <select value={newStaff.role} onChange={(e) => setNewStaff({ ...newStaff, role: e.target.value })} className="guardian-select py-2">
+                <option value="nurse">Nurse</option>
+                <option value="admin">Admin</option>
+                <option value="security">Security</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Floor</label>
+              <select value={selectedFloor} onChange={(e) => setNewStaff({ ...newStaff, floor: e.target.value, zone: '' })} className="guardian-select py-2">
+                {availableFloors.map((f) => <option key={f} value={f}>Floor {f}</option>)}
+                {availableFloors.length === 0 && <option value="" disabled>No Floors</option>}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold tracking-wider uppercase text-white/50 mb-1.5">Room / Zone</label>
+              <select value={newStaff.zone} onChange={(e) => setNewStaff({ ...newStaff, zone: e.target.value })} className="guardian-select py-2">
+                <option value="" disabled hidden>Select Room</option>
+                {availableRoomsForFloor.map((r) => <option key={r.id} value={r.name || r.zone}>{r.name || r.zone}</option>)}
+                {availableRoomsForFloor.length === 0 && <option value="" disabled>No Rooms</option>}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <button type="submit" disabled={adding} className="btn-primary">
+              {adding ? 'Saving...' : 'Save Staff Member'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Filters */}
+      <div className="glass-card p-4 flex flex-wrap gap-3">
         <input
           id="staff-search"
           type="search"
@@ -225,15 +349,26 @@ export default function Staff() {
                       <span className="badge-alert">Busy</span>
                     )}
                   </td>
+
+                  {/* ── CONFLICT 5 RESOLVED: Toggle + Delete buttons (feature/ayush) ── */}
                   <td>
-                    <button
-                      id={`staff-toggle-${member.id}`}
-                      onClick={() => toggleAvailability(member)}
-                      disabled={updatingId === member.id}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:bg-white/10 disabled:opacity-50"
-                    >
-                      {updatingId === member.id ? 'Updating...' : member.available ? 'Mark Busy' : 'Mark Available'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        id={`staff-toggle-${member.id}`}
+                        onClick={() => toggleAvailability(member)}
+                        disabled={updatingId === member.id}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 transition disabled:opacity-50"
+                      >
+                        {updatingId === member.id ? '…' : member.available ? 'Mark Busy' : 'Mark Available'}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteStaff(member.id)}
+                        disabled={updatingId === member.id}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
