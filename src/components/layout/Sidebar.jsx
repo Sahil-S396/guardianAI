@@ -32,6 +32,15 @@ const navItems = [
     ),
   },
   {
+    path: '/ai-monitor',
+    label: 'AI Monitor',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.75h4.5m-7.5 4.5h10.5m-12 4.5h13.5m-15 4.5h16.5M8 21l4-4 4 4" />
+      </svg>
+    ),
+  },
+  {
     path: '/drill',
     label: 'Drill Mode',
     icon: (
@@ -97,7 +106,7 @@ export default function Sidebar() {
               `sidebar-item ${isActive ? 'active' : ''} ${item.drill && drillMode ? 'text-accent-amber border border-accent-amber/30 bg-accent-amber/10' : ''}`
             }
           >
-            <span className={item.drill ? 'text-accent-amber' : ''}>{item.icon}</span>
+            <span className={item.drill ? 'text-accent-amber' : item.path === '/ai-monitor' ? 'text-accent-blue' : ''}>{item.icon}</span>
             {item.label}
             {item.drill && drillMode && (
               <span className="ml-auto w-2 h-2 rounded-full bg-accent-amber animate-ping-slow" />
