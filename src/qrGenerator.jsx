@@ -208,7 +208,7 @@ export function QrGeneratorApp() {
                     <QRCodePreview url={url} />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs uppercase tracking-[0.18em] text-white/35">Scan target</p>
-                      <p className="mt-2 break-all text-xs text-white/55">{url}</p>
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="mt-2 break-all text-xs text-emerald-400 hover:text-emerald-300 underline block">{url}</a>
                     </div>
                   </div>
                 </div>
