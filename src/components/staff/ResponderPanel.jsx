@@ -6,6 +6,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useHospital } from '../../contexts/HospitalContext';
@@ -84,7 +85,16 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
   const countdownSeconds = Math.ceil(remainingMs / 1000);
   const progressPercent = Math.max(0, Math.min(100, (remainingMs / 90_000) * 100));
   const responders = ranking.ranked.slice(0, compact ? 3 : 5);
-  const assignedStaffId = alert?.assignedStaffId || alert?.acknowledgedBy;
+  const assignedStaffIds = alert?.assignedStaffIds || (alert?.assignedStaffId ? [alert.assignedStaffId] : []);
+  if (alert?.acknowledgedBy && !assignedStaffIds.includes(alert.acknowledgedBy)) {
+    assignedStaffIds.push(alert.acknowledgedBy);
+  }
+  
+  const [assignRoleSelections, setAssignRoleSelections] = useState({});
+
+  const handleRoleChange = (memberId, role) => {
+    setAssignRoleSelections(prev => ({ ...prev, [memberId]: role }));
+  };
 
   const handleAssign = async (member) => {
     if (!hospitalId || !alert?.id) {
@@ -92,11 +102,14 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
     }
 
     setAssigningId(member.id);
+    const selectedRole = assignRoleSelections[member.id] || 'Primary Responder';
+    
     try {
       const alertPatch = {
-        assignedStaffId: member.id,
+        assignedStaffIds: arrayUnion(member.id),
+        assignedStaffId: member.id, // Keep for backward compatibility
         assignedStaffName: member.name,
-        assignedStaffRole: member.role || 'staff',
+        assignedStaffRole: selectedRole,
         assignedAt: serverTimestamp(),
       };
 
@@ -210,22 +223,35 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleAssign(member)}
-                  disabled={assigningId === member.id || assignedStaffId === member.id}
-                  className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                    assignedStaffId === member.id
-                      ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-300'
-                      : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'
-                  } disabled:cursor-not-allowed disabled:opacity-70`}
-                >
-                  {assignedStaffId === member.id
-                    ? 'Assigned'
-                    : assigningId === member.id
-                    ? 'Assigning...'
-                    : 'Assign'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={assignRoleSelections[member.id] || 'Primary Responder'}
+                    onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                    className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white/75 outline-none focus:border-white/20"
+                    disabled={assignedStaffIds.includes(member.id)}
+                  >
+                    <option value="Primary Responder">Primary</option>
+                    <option value="Secondary Responder">Secondary</option>
+                    <option value="Medical Support">Medical</option>
+                    <option value="Security Detail">Security</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleAssign(member)}
+                    disabled={assigningId === member.id || assignedStaffIds.includes(member.id)}
+                    className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      assignedStaffIds.includes(member.id)
+                        ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-300'
+                        : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'
+                    } disabled:cursor-not-allowed disabled:opacity-70`}
+                  >
+                    {assignedStaffIds.includes(member.id)
+                      ? 'Assigned'
+                      : assigningId === member.id
+                      ? 'Assigning...'
+                      : 'Assign'}
+                  </button>
+                </div>
               </div>
             </div>
           ))}
