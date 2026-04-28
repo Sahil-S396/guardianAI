@@ -59,6 +59,76 @@ const DEFAULT_COMBINED_SCORES = {
   summary: 'Camera feed is stable.',
 };
 
+function waitForVideoReady(videoElement, timeoutMs = 5000) {
+  if (!videoElement) {
+    return Promise.reject(new Error('Camera preview is unavailable.'));
+  }
+
+  if (videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutId = null;
+
+    const cleanup = () => {
+      videoElement.removeEventListener('loadedmetadata', handleReady);
+      videoElement.removeEventListener('loadeddata', handleReady);
+      videoElement.removeEventListener('canplay', handleReady);
+      videoElement.removeEventListener('error', handleError);
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    const finalize = (callback) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const handleReady = () => finalize(resolve);
+    const handleError = () => finalize(() => reject(new Error('The camera feed could not be rendered.')));
+
+    timeoutId = window.setTimeout(() => {
+      finalize(() => reject(new Error('Timed out while waiting for the camera feed to start.')));
+    }, timeoutMs);
+
+    videoElement.addEventListener('loadedmetadata', handleReady, { once: true });
+    videoElement.addEventListener('loadeddata', handleReady, { once: true });
+    videoElement.addEventListener('canplay', handleReady, { once: true });
+    videoElement.addEventListener('error', handleError, { once: true });
+  });
+}
+
+function getCameraStartErrorMessage(error) {
+  const errorName = String(error?.name || '');
+
+  if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+    return 'Camera permission was blocked. Allow browser camera access and try again.';
+  }
+
+  if (errorName === 'NotFoundError' || errorName === 'DevicesNotFoundError') {
+    return 'No usable camera was found. Plug in a camera or refresh the device list.';
+  }
+
+  if (errorName === 'NotReadableError' || errorName === 'TrackStartError') {
+    return 'The selected camera is busy or unavailable. Close other apps using it and try again.';
+  }
+
+  if (errorName === 'OverconstrainedError' || errorName === 'ConstraintNotSatisfiedError') {
+    return 'The selected camera profile is unavailable right now. Refresh cameras and try again.';
+  }
+
+  if (errorName === 'AbortError') {
+    return 'The camera feed was interrupted while starting. Please try again.';
+  }
+
+  return error?.message || 'Unable to start the selected video source.';
+}
+
 export default function AIMonitor() {
   const { hospitalId, drillMode } = useHospital();
   const { user } = useAuth();
@@ -590,12 +660,6 @@ export default function AIMonitor() {
       { merge: true }
     );
 
-    setMonitoring(true);
-    setStatusMessage(
-      inputSource === INPUT_SOURCES.FILE
-        ? `Monitoring demo file ${demoFile?.name || ''} in ${selectedRoom.name}.`
-        : `Monitoring ${selectedRoom.name} through ${cameraLabel}.`
-    );
   }, [
     aiAssistEnabled,
     cameraLabel,
@@ -608,6 +672,28 @@ export default function AIMonitor() {
     selectedRoom,
     user,
   ]);
+
+  const startCameraStream = useCallback(async () => {
+    const requestedConstraints = selectedDeviceId
+      ? { video: { deviceId: { exact: selectedDeviceId } }, audio: false }
+      : { video: true, audio: false };
+
+    try {
+      return await navigator.mediaDevices.getUserMedia(requestedConstraints);
+    } catch (error) {
+      const errorName = String(error?.name || '');
+      const shouldFallbackToDefault = Boolean(selectedDeviceId)
+        && (errorName === 'OverconstrainedError'
+          || errorName === 'ConstraintNotSatisfiedError'
+          || errorName === 'NotFoundError');
+
+      if (!shouldFallbackToDefault) {
+        throw error;
+      }
+
+      return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+  }, [selectedDeviceId]);
 
   const handleStartMonitoring = useCallback(async () => {
     if (!hospitalId || !selectedRoom) {
@@ -635,36 +721,51 @@ export default function AIMonitor() {
 
     try {
       if (inputSource === INPUT_SOURCES.CAMERA) {
-        const constraints = selectedDeviceId
-          ? { video: { deviceId: { exact: selectedDeviceId } }, audio: false }
-          : { video: true, audio: false };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await startCameraStream();
         streamRef.current = stream;
-        await refreshCameraDevices();
 
         if (videoRef.current) {
+          videoRef.current.muted = true;
+          videoRef.current.playsInline = true;
+          videoRef.current.autoplay = true;
           videoRef.current.srcObject = stream;
+          await waitForVideoReady(videoRef.current);
           await videoRef.current.play();
         }
+
+        await refreshCameraDevices();
       } else if (videoRef.current && demoFileUrlRef.current) {
         videoRef.current.srcObject = null;
         videoRef.current.src = demoFileUrlRef.current;
         videoRef.current.currentTime = 0;
         videoRef.current.loop = true;
+        await waitForVideoReady(videoRef.current);
         await videoRef.current.play();
         videoRef.current.onended = null;
       }
 
-      await prepareMonitorSession();
+      setMonitoring(true);
+      setStatusMessage(
+        inputSource === INPUT_SOURCES.FILE
+          ? `Monitoring demo file ${demoFile?.name || ''} in ${selectedRoom.name}.`
+          : `Monitoring ${selectedRoom.name} through ${cameraLabel}.`
+      );
+
+      try {
+        await prepareMonitorSession();
+      } catch (sessionError) {
+        console.error('Monitor backend session init failed:', sessionError);
+        setCameraError('Live preview started, but backend sync could not initialize immediately. Monitoring will keep trying.');
+      }
     } catch (error) {
       console.error('Failed to start monitor:', error);
-      setCameraError(error?.message || 'Unable to start the selected video source.');
+      setCameraError(getCameraStartErrorMessage(error));
       await stopMonitoring();
     } finally {
       setStarting(false);
     }
   }, [
+    cameraLabel,
     demoFile,
     fallEnabled,
     fireEnabled,
@@ -672,8 +773,8 @@ export default function AIMonitor() {
     inputSource,
     prepareMonitorSession,
     refreshCameraDevices,
-    selectedDeviceId,
     selectedRoom,
+    startCameraStream,
     stopMonitoring,
   ]);
 
