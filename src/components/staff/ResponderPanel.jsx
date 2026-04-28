@@ -97,7 +97,7 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
   };
 
   const [hasAutoCalled, setHasAutoCalled] = useState(false);
-  const [show911Popup, setShow911Popup] = useState(false);
+  const [show108Popup, setShow108Popup] = useState(false);
   const alertTime = alert?.createdAt?.toDate?.()?.getTime() || (alert?.createdAt?.seconds * 1000) || now;
   const ageMs = now - alertTime;
   const autoCallRemainingSeconds = Math.max(0, 90 - Math.floor(ageMs / 1000));
@@ -108,7 +108,7 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
     // 90 seconds = 90,000 milliseconds
     if (ageMs >= 90000) {
       setHasAutoCalled(true);
-      setShow911Popup(true);
+      setShow108Popup(true);
     }
   }, [alert, assignedStaffIds.length, hasAutoCalled, ageMs]);
 
@@ -207,14 +207,14 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
         <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4">
           <div>
             <p className="text-sm font-semibold text-red-300">No staff assigned to this alert</p>
-            <p className="mt-1 text-xs text-red-400/80">Auto-calling 911 in: <span className="font-bold text-red-300">{autoCallRemainingSeconds}s</span></p>
+            <p className="mt-1 text-xs text-red-400/80">Auto-calling 108 in: <span className="font-bold text-red-300">{autoCallRemainingSeconds}s</span></p>
           </div>
           <button 
             type="button"
-            onClick={() => setShow911Popup(true)}
+            onClick={() => setShow108Popup(true)}
             className="shrink-0 w-full sm:w-auto text-center rounded-lg bg-red-600 px-6 py-2 text-sm font-bold tracking-widest text-white shadow-lg shadow-red-500/20 transition hover:bg-red-500"
           >
-            CALL 911 NOW
+            CALL 108 NOW
           </button>
         </div>
       )}
@@ -290,7 +290,7 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
         </div>
       )}
 
-      {show911Popup && (
+      {show108Popup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="flex flex-col items-center justify-center p-8 bg-red-900/90 rounded-3xl border-2 border-red-500 shadow-2xl shadow-red-500/50 max-w-sm w-full mx-4">
             <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center animate-pulse mb-6 shadow-lg shadow-red-600/50">
@@ -298,10 +298,10 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
               </svg>
             </div>
-            <h2 className="text-3xl font-black text-white tracking-wider mb-2">CALLING 911...</h2>
+            <h2 className="text-3xl font-black text-white tracking-wider mb-2">CALLING 108...</h2>
             <p className="text-red-200 text-center text-sm mb-8">Connecting to emergency dispatch</p>
             <button 
-              onClick={() => setShow911Popup(false)}
+              onClick={() => setShow108Popup(false)}
               className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition"
             >
               Cancel Call (Demo)
