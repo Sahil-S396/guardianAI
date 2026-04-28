@@ -5,6 +5,7 @@ import { formatDistanceToNow } from '../utils/time';
 const typeColors = {
   fire: 'text-accent-red',
   fall: 'text-accent-amber',
+  crisis: 'text-accent-blue',
 };
 
 const typeIcons = {
@@ -19,15 +20,14 @@ const typeIcons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
   ),
+  crisis: (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  ),
 };
 
-const statusBadge = {
-  active: <span className="badge-active">Active</span>,
-  acknowledged: <span className="badge-acknowledged">Acknowledged</span>,
-  escalated: <span className="badge-escalated">Escalated</span>,
-  contained: <span className="badge-alert">Contained</span>,
-  resolved: <span className="badge-clear">Resolved</span>,
-};
+const resolvedBadge = <span className="badge-clear">Resolved</span>;
 
 export default function AlertCard({ alert, isDrill }) {
   const navigate = useNavigate();
@@ -36,6 +36,8 @@ export default function AlertCard({ alert, isDrill }) {
     ? 'border-accent-amber/30 hover:border-accent-amber/60'
     : alert.type === 'fire'
     ? 'border-accent-red/30 hover:border-accent-red/60'
+    : alert.type === 'crisis'
+    ? 'border-accent-blue/30 hover:border-accent-blue/60'
     : 'border-accent-amber/30 hover:border-accent-amber/60';
   const time = alert.createdAt?.toDate?.() || new Date((alert.createdAt?.seconds || 0) * 1000);
 
@@ -50,7 +52,7 @@ export default function AlertCard({ alert, isDrill }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-start gap-3">
-          <div className={`mt-0.5 rounded-lg p-2 ${isDrill ? 'bg-accent-amber/10' : alert.type === 'fire' ? 'bg-accent-red/10' : 'bg-accent-amber/10'}`}>
+          <div className={`mt-0.5 rounded-lg p-2 ${isDrill ? 'bg-accent-amber/10' : alert.type === 'fire' ? 'bg-accent-red/10' : alert.type === 'crisis' ? 'bg-accent-blue/10' : 'bg-accent-amber/10'}`}>
             <span className={color}>{typeIcons[alert.type]}</span>
           </div>
 
@@ -83,7 +85,7 @@ export default function AlertCard({ alert, isDrill }) {
         </div>
 
         {alert.status === 'resolved'
-          ? statusBadge.resolved
+          ? resolvedBadge
           : alert.geminiResponse?.severity && (
               <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
                 alert.geminiResponse.severity === 'critical'

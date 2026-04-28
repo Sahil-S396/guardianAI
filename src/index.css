@@ -110,12 +110,12 @@
 
   .badge-active {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
-    @apply bg-blue-500/20 text-blue-400 border border-blue-500/30;
+    @apply bg-accent-red/20 text-accent-red border border-accent-red/30;
   }
 
   .badge-acknowledged {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
-    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+    @apply bg-accent-teal/20 text-accent-teal border border-accent-teal/30;
   }
 
   /* ─── Alert banner variants ─── */

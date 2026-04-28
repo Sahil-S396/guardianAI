@@ -15,6 +15,7 @@ export default function Rooms() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => {
     if (!hospitalId) return;
@@ -60,15 +61,17 @@ export default function Rooms() {
   const handleDeleteRoom = async (room) => {
     if (!hospitalId) return;
 
-    const roomName = room?.name || 'this room';
-    if (!window.confirm(`Delete ${roomName} from the rooms list?`)) return;
+    if (confirmDeleteId !== room.id) {
+      setConfirmDeleteId(room.id);
+      return;
+    }
 
+    setConfirmDeleteId(null);
     setDeletingRoomId(room.id);
     try {
       await deleteDoc(doc(db, `hospitals/${hospitalId}/rooms`, room.id));
     } catch (error) {
       console.error('Failed to delete room:', error);
-      window.alert('Could not delete this room right now. Please try again.');
     } finally {
       setDeletingRoomId(null);
     }
@@ -152,7 +155,9 @@ export default function Rooms() {
               key={room.id}
               room={room}
               deleting={deletingRoomId === room.id}
+              confirmingDelete={confirmDeleteId === room.id}
               onDelete={() => handleDeleteRoom(room)}
+              onCancelDelete={() => setConfirmDeleteId(null)}
             />
           ))}
         </div>

@@ -149,11 +149,17 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
           </p>
         </div>
 
-        <div className="min-w-[120px] text-right">
+        <div className="min-w-[100px] text-right">
           <p className="text-[11px] uppercase tracking-[0.18em] text-white/35">Auto-escalation</p>
-          <p className={`mt-1 text-2xl font-black ${remainingMs > 15_000 ? 'text-accent-red' : 'text-orange-300'}`}>
-            {alert?.status === 'active' ? `${countdownSeconds}s` : alert?.status}
-          </p>
+          {alert?.status === 'active' ? (
+            <p className={`mt-1 text-2xl font-black ${remainingMs > 15_000 ? 'text-accent-red' : 'text-orange-300'}`}>
+              {countdownSeconds}s
+            </p>
+          ) : (
+            <span className="mt-1.5 inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-white/[0.06] text-white/60 border border-white/10">
+              {alert?.status}
+            </span>
+          )}
         </div>
       </div>
 
@@ -169,8 +175,8 @@ export default function ResponderPanel({ alert, room, title = 'Suggested Respond
       )}
 
       {responders.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-5 text-sm text-white/45">
-          No available staff with a current location. Have someone scan `checkin.html` or switch the top bar to simulation mode.
+        <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-5 text-center text-sm text-white/45">
+          No available staff with a current location. Use the Check-in page to register staff, or switch to Simulation mode in the top bar.
         </div>
       ) : (
         <div className="mt-4 space-y-3">

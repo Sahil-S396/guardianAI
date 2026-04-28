@@ -18,7 +18,7 @@ const statusBg = {
   critical: 'bg-accent-red/5',
 };
 
-export default function RoomCard({ room, onDelete = null, deleting = false }) {
+export default function RoomCard({ room, onDelete = null, onCancelDelete = null, deleting = false, confirmingDelete = false }) {
   const { hospitalId, drillMode } = useHospital();
   const { user } = useAuth();
 
@@ -190,14 +190,34 @@ export default function RoomCard({ room, onDelete = null, deleting = false }) {
       </div>
 
       {onDelete && (
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting || triggering !== null}
-          className="mt-1 w-full rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {deleting ? 'Deleting...' : 'Delete Room'}
-        </button>
+        confirmingDelete ? (
+          <div className="mt-1 flex gap-2">
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting || triggering !== null}
+              className="flex-1 rounded-lg border border-red-500/40 bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {deleting ? 'Deleting...' : 'Confirm Delete'}
+            </button>
+            <button
+              type="button"
+              onClick={onCancelDelete}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/60 transition hover:bg-white/10"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting || triggering !== null}
+            className="mt-1 w-full rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Delete Room
+          </button>
+        )
       )}
     </div>
   );
