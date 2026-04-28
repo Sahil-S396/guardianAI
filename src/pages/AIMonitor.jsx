@@ -938,12 +938,12 @@ export default function AIMonitor() {
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs uppercase tracking-[0.2em] text-white/40">Backend sync</p>
-                    <span className="badge-active">Firestore live</span>
+                    <span className="badge-clear">Firestore live</span>
                   </div>
                   <div className="mt-3 space-y-2 text-sm text-white/65">
-                    <p>Monitor state writes to `aiMonitors` every few seconds while the feed is active.</p>
-                    <p>Elevated detections are logged into `aiDetections` for the incident trail.</p>
-                    <p>Critical fire or fall events create standard alerts in the shared `alerts` backend.</p>
+                    <p>Monitor state syncs to the AI Monitors collection every few seconds while the feed is active.</p>
+                    <p>Elevated detections are logged to the Detection Trail for incident review.</p>
+                    <p>Critical fire or fall events automatically create alerts in the shared alert feed.</p>
                   </div>
                 </div>
 

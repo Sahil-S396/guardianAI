@@ -218,7 +218,7 @@ export default function Drill() {
                   {isCountdown && (
                     <div>
                       <div className="flex justify-between text-[10px] text-accent-amber mb-1">
-                        <span>Fall countdown running (10x speed)...</span>
+                        <span>Fall countdown in progress...</span>
                         <span>{countdown.progress}%</span>
                       </div>
                       <div className="progress-bar-track">

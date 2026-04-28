@@ -41,14 +41,15 @@ export default function Staff() {
   const [filterAvail, setFilterAvail] = useState('all');
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
+  const [confirmDeleteStaffId, setConfirmDeleteStaffId] = useState(null);
 
   const [rooms, setRooms] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newStaff, setNewStaff] = useState({ name: '', employeeId: '', role: 'nurse', floor: '', zone: '' });
   const [adding, setAdding] = useState(false);
+  const [addFormError, setAddFormError] = useState('');
 
-  // ── CONFLICT 2 RESOLVED: Both useEffects merged ──────────────────────────
-  // Staff fetching (from main)
+  // Staff fetching
   useEffect(() => {
     if (!hospitalId) return undefined;
     const unsub = onSnapshot(
@@ -61,7 +62,7 @@ export default function Staff() {
     return unsub;
   }, [hospitalId]);
 
-  // staffLocations fetching (from main)
+  // Staff locations fetching
   useEffect(() => {
     if (!hospitalId) return undefined;
     const unsub = onSnapshot(
@@ -73,7 +74,7 @@ export default function Staff() {
     return unsub;
   }, [hospitalId]);
 
-  // Rooms fetching (from feature/ayush)
+  // Rooms fetching
   useEffect(() => {
     if (!hospitalId) return;
     const unsub = onSnapshot(
@@ -85,7 +86,7 @@ export default function Staff() {
     return unsub;
   }, [hospitalId]);
 
-  // ── CONFLICT 3 RESOLVED: main's useMemo staffRows kept ───────────────────
+
   const staffRows = useMemo(() => {
     const locationMap = new Map(staffLocations.map((l) => [l.staffId || l.id, l]));
     return staff.map((member) => {
@@ -102,7 +103,7 @@ export default function Staff() {
 
   const floors = [...new Set(staffRows.map((m) => m.floor).filter(Boolean))].sort();
 
-  // Derived from rooms (feature/ayush)
+  // Derived from rooms
   const availableFloors = [...new Set(rooms.map((r) => String(r.floor)))].sort();
   const selectedFloor = newStaff.floor || availableFloors[0] || '';
   const availableRoomsForFloor = rooms
@@ -136,9 +137,13 @@ export default function Staff() {
     }
   };
 
-  // Delete handler (from feature/ayush)
+  // Delete handler
   const handleDeleteStaff = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this staff member?')) return;
+    if (confirmDeleteStaffId !== id) {
+      setConfirmDeleteStaffId(id);
+      return;
+    }
+    setConfirmDeleteStaffId(null);
     setUpdatingId(id);
     try {
       await deleteDoc(doc(db, `hospitals/${hospitalId}/staff`, id));
@@ -149,13 +154,14 @@ export default function Staff() {
     }
   };
 
-  // Add handler (from feature/ayush)
+  // Add handler
   const handleAddStaff = async (e) => {
     e.preventDefault();
     if (!newStaff.name || !newStaff.employeeId || !newStaff.role || !selectedFloor || !newStaff.zone) {
-      alert('Please fill out all fields including Floor and Room!');
+      setAddFormError('Please fill out all fields including Floor and Room.');
       return;
     }
+    setAddFormError('');
     setAdding(true);
     try {
       await setDoc(doc(db, `hospitals/${hospitalId}/staff`, newStaff.employeeId), {
@@ -169,6 +175,7 @@ export default function Staff() {
       setNewStaff({ name: '', employeeId: '', role: 'nurse', floor: '', zone: '' });
     } catch (err) {
       console.error('Failed to add staff:', err);
+      setAddFormError('Failed to save staff member. Please try again.');
     } finally {
       setAdding(false);
     }
@@ -179,7 +186,6 @@ export default function Staff() {
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* ── CONFLICT 4 RESOLVED: Both header sections merged ── */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Staff Directory</h1>
@@ -188,7 +194,6 @@ export default function Staff() {
           </p>
         </div>
 
-        {/* Role breakdown + Add Staff button (feature/ayush) */}
         <div className="flex items-center gap-3">
           <div className="hidden md:flex gap-3">
             {['nurse', 'admin', 'security'].map((role) => {
@@ -206,7 +211,7 @@ export default function Staff() {
         </div>
       </div>
 
-      {/* Tracking mode banner (main) */}
+      {/* Tracking mode banner */}
       <div className="glass-card flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">Tracking mode</p>
@@ -222,7 +227,7 @@ export default function Staff() {
         </div>
       </div>
 
-      {/* Add Staff Form (feature/ayush) */}
+      {/* Add Staff Form */}
       {showAddForm && (
         <form onSubmit={handleAddStaff} className="glass-card p-4 space-y-4 shadow-xl border-accent-blue/30 bg-blue-500/5">
           <div className="flex items-center justify-between">
@@ -262,6 +267,9 @@ export default function Staff() {
               </select>
             </div>
           </div>
+          {addFormError && (
+            <p className="text-xs text-accent-red bg-accent-red/10 border border-accent-red/20 rounded px-3 py-2">{addFormError}</p>
+          )}
           <div className="flex justify-end pt-2">
             <button type="submit" disabled={adding} className="btn-primary">
               {adding ? 'Saving...' : 'Save Staff Member'}
@@ -307,7 +315,7 @@ export default function Staff() {
           <div className="p-12 text-center">
             <p className="text-white/40">No staff match your filters.</p>
             {staffRows.length === 0 && (
-              <p className="mt-2 text-xs text-white/25">Use the QR check-in page to create hackathon demo staff on the fly.</p>
+              <p className="mt-2 text-xs text-white/25">Add staff using the form above, or scan a QR code from the check-in page.</p>
             )}
           </div>
         ) : (
@@ -357,7 +365,7 @@ export default function Staff() {
                     )}
                   </td>
 
-                  {/* ── CONFLICT 5 RESOLVED: Toggle + Delete buttons (feature/ayush) ── */}
+
                   <td>
                     <div className="flex items-center gap-2">
                       <button
@@ -368,13 +376,31 @@ export default function Staff() {
                       >
                         {updatingId === member.id ? '…' : member.available ? 'Mark Busy' : 'Mark Available'}
                       </button>
-                      <button
-                        onClick={() => handleDeleteStaff(member.id)}
-                        disabled={updatingId === member.id}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
+                      {confirmDeleteStaffId === member.id ? (
+                        <>
+                          <button
+                            onClick={() => handleDeleteStaff(member.id)}
+                            disabled={updatingId === member.id}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 transition disabled:opacity-50"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteStaffId(null)}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 transition"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteStaff(member.id)}
+                          disabled={updatingId === member.id}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

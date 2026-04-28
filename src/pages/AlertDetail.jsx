@@ -331,7 +331,7 @@ export default function AlertDetail() {
                   disabled={containing}
                   className="btn-secondary w-full justify-center disabled:opacity-50"
                 >
-                  {containing ? 'Marking Contained...' : 'Fire Controlled - Lower Priority'}
+                  {containing ? 'Marking Contained...' : 'Mark as Contained'}
                 </button>
               )}
               {canResolve && (
@@ -339,9 +339,9 @@ export default function AlertDetail() {
                   id="alert-resolve-btn"
                   onClick={handleResolve}
                   disabled={resolving}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-semibold transition hover:bg-emerald-500/15 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-semibold transition hover:bg-emerald-500/20 active:scale-95 disabled:opacity-50"
                 >
-                  {resolving ? 'Resolving...' : 'Resolve And Clear Area'}
+                  {resolving ? 'Resolving...' : 'Resolve & Clear Area'}
                 </button>
               )}
               {alert.status === 'contained' && (

@@ -11,6 +11,7 @@ const routeLabels = {
   '/staff': 'Staff Directory',
   '/ai-monitor': 'AI Camera Monitor',
   '/drill': 'Drill Mode Simulator',
+  '/map-editor': 'Hospital Map Editor',
 };
 
 export default function Topbar() {
