@@ -6,6 +6,12 @@ const CIRCULATION_TYPES = new Set([
   'exit_door',
 ]);
 
+const DOOR_TYPES = new Set(['entry_door', 'exit_door']);
+const EDGE_GAP_TOLERANCE = 18;
+const EDGE_OVERLAP_MIN = 14;
+const WALL_ALIGNMENT_TOLERANCE = 8;
+const WALL_OPENING_MARGIN = 6;
+
 const TRACKABLE_EXCLUDED_TYPES = new Set(['camera']);
 
 export const TRACKING_MODES = {
@@ -79,21 +85,168 @@ function calculateCenterDistance(a, b) {
 function estimateEdgeWeight(a, b) {
   const gap = calculateGap(a, b);
   const centerDistance = calculateCenterDistance(a, b);
-  return Math.max(1, Math.round((gap * 0.7) + (centerDistance * 0.3)));
+  const eitherCirculation = a.isCirculation || b.isCirculation;
+  const bothCirculation = a.isCirculation && b.isCirculation;
+  const baseWeight = Math.max(1, Math.round((gap * 0.7) + (centerDistance * 0.3)));
+
+  if (bothCirculation) {
+    return Math.max(1, Math.round(baseWeight * 0.55));
+  }
+
+  if (eitherCirculation) {
+    return Math.max(1, Math.round(baseWeight * 0.8));
+  }
+
+  return Math.max(1, Math.round(baseWeight * 1.75));
 }
 
-function shouldDirectlyConnect(a, b) {
-  const gap = calculateGap(a, b);
-  const centerDistance = calculateCenterDistance(a, b);
-  const eitherCirculation = a.isCirculation || b.isCirculation;
-  const sameType = a.type === b.type;
-  const threshold = eitherCirculation ? 90 : 48;
+function getSpanOverlap(startA, endA, startB, endB) {
+  return Math.min(endA, endB) - Math.max(startA, startB);
+}
 
-  if (gap <= threshold) {
+function getNodeBounds(node) {
+  return {
+    left: asNumber(node.x),
+    right: asNumber(node.x) + asNumber(node.w),
+    top: asNumber(node.y),
+    bottom: asNumber(node.y) + asNumber(node.h),
+  };
+}
+
+function getSharedBoundary(a, b) {
+  const boundsA = getNodeBounds(a);
+  const boundsB = getNodeBounds(b);
+  const verticalOverlap = getSpanOverlap(boundsA.top, boundsA.bottom, boundsB.top, boundsB.bottom);
+  const horizontalOverlap = getSpanOverlap(boundsA.left, boundsA.right, boundsB.left, boundsB.right);
+  const leftGap = Math.abs(boundsA.right - boundsB.left);
+  const rightGap = Math.abs(boundsB.right - boundsA.left);
+  const topGap = Math.abs(boundsA.bottom - boundsB.top);
+  const bottomGap = Math.abs(boundsB.bottom - boundsA.top);
+  const candidates = [];
+
+  if (verticalOverlap >= EDGE_OVERLAP_MIN) {
+    if (leftGap <= EDGE_GAP_TOLERANCE) {
+      candidates.push({
+        orientation: 'vertical',
+        axis: (boundsA.right + boundsB.left) / 2,
+        rangeStart: Math.max(boundsA.top, boundsB.top),
+        rangeEnd: Math.min(boundsA.bottom, boundsB.bottom),
+        gap: leftGap,
+      });
+    }
+
+    if (rightGap <= EDGE_GAP_TOLERANCE) {
+      candidates.push({
+        orientation: 'vertical',
+        axis: (boundsB.right + boundsA.left) / 2,
+        rangeStart: Math.max(boundsA.top, boundsB.top),
+        rangeEnd: Math.min(boundsA.bottom, boundsB.bottom),
+        gap: rightGap,
+      });
+    }
+  }
+
+  if (horizontalOverlap >= EDGE_OVERLAP_MIN) {
+    if (topGap <= EDGE_GAP_TOLERANCE) {
+      candidates.push({
+        orientation: 'horizontal',
+        axis: (boundsA.bottom + boundsB.top) / 2,
+        rangeStart: Math.max(boundsA.left, boundsB.left),
+        rangeEnd: Math.min(boundsA.right, boundsB.right),
+        gap: topGap,
+      });
+    }
+
+    if (bottomGap <= EDGE_GAP_TOLERANCE) {
+      candidates.push({
+        orientation: 'horizontal',
+        axis: (boundsB.bottom + boundsA.top) / 2,
+        rangeStart: Math.max(boundsA.left, boundsB.left),
+        rangeEnd: Math.min(boundsA.right, boundsB.right),
+        gap: bottomGap,
+      });
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return candidates.sort((left, right) => left.gap - right.gap)[0];
+}
+
+function isPointBlockedByWall(point, wall) {
+  const x1 = asNumber(wall?.x1);
+  const y1 = asNumber(wall?.y1);
+  const x2 = asNumber(wall?.x2);
+  const y2 = asNumber(wall?.y2);
+
+  if (Math.abs(x1 - x2) <= WALL_ALIGNMENT_TOLERANCE) {
+    const minY = Math.min(y1, y2) - WALL_ALIGNMENT_TOLERANCE;
+    const maxY = Math.max(y1, y2) + WALL_ALIGNMENT_TOLERANCE;
+    return Math.abs(point.x - ((x1 + x2) / 2)) <= WALL_ALIGNMENT_TOLERANCE
+      && point.y >= minY
+      && point.y <= maxY;
+  }
+
+  if (Math.abs(y1 - y2) <= WALL_ALIGNMENT_TOLERANCE) {
+    const minX = Math.min(x1, x2) - WALL_ALIGNMENT_TOLERANCE;
+    const maxX = Math.max(x1, x2) + WALL_ALIGNMENT_TOLERANCE;
+    return Math.abs(point.y - ((y1 + y2) / 2)) <= WALL_ALIGNMENT_TOLERANCE
+      && point.x >= minX
+      && point.x <= maxX;
+  }
+
+  return false;
+}
+
+function hasOpenBoundary(boundary, floorWalls = []) {
+  const span = boundary.rangeEnd - boundary.rangeStart;
+  if (span <= 0) {
+    return false;
+  }
+
+  const sampleCount = Math.max(3, Math.min(7, Math.ceil(span / 24)));
+  const safeStart = boundary.rangeStart + WALL_OPENING_MARGIN;
+  const safeEnd = boundary.rangeEnd - WALL_OPENING_MARGIN;
+  const effectiveStart = safeStart < safeEnd ? safeStart : boundary.rangeStart;
+  const effectiveEnd = safeStart < safeEnd ? safeEnd : boundary.rangeEnd;
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const ratio = sampleCount === 1 ? 0.5 : index / (sampleCount - 1);
+    const sampleOffset = effectiveStart + ((effectiveEnd - effectiveStart) * ratio);
+    const point = boundary.orientation === 'vertical'
+      ? { x: boundary.axis, y: sampleOffset }
+      : { x: sampleOffset, y: boundary.axis };
+
+    const blocked = floorWalls.some((wall) => isPointBlockedByWall(point, wall));
+    if (!blocked) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function shouldDirectlyConnect(a, b, floorWalls, floorHasCirculation) {
+  const boundary = getSharedBoundary(a, b);
+  if (!boundary) {
+    return false;
+  }
+
+  if (!hasOpenBoundary(boundary, floorWalls)) {
+    return false;
+  }
+
+  if (a.isCirculation || b.isCirculation) {
     return true;
   }
 
-  return sameType && centerDistance <= 140;
+  if (DOOR_TYPES.has(a.type) || DOOR_TYPES.has(b.type)) {
+    return true;
+  }
+
+  return !floorHasCirculation;
 }
 
 function addEdge(adjacency, sourceId, targetId, weight) {
@@ -149,27 +302,25 @@ function buildNodesForFloor(floorNumber, floorData) {
     .map((zone, index) => buildNodeFromZone(floorNumber, zone, index));
 }
 
-function buildAdjacency(nodes) {
+function buildAdjacency(floorGraphs) {
   const adjacency = new Map();
-  const byFloor = new Map();
+  const nodes = floorGraphs.flatMap(({ nodes: floorNodes }) => floorNodes);
 
   nodes.forEach((node) => {
-    if (!byFloor.has(node.floor)) {
-      byFloor.set(node.floor, []);
-    }
-    byFloor.get(node.floor).push(node);
     if (!adjacency.has(node.id)) {
       adjacency.set(node.id, []);
     }
   });
 
-  byFloor.forEach((floorNodes) => {
+  floorGraphs.forEach(({ nodes: floorNodes, walls: floorWalls }) => {
+    const floorHasCirculation = floorNodes.some((node) => node.isCirculation);
+
     for (let index = 0; index < floorNodes.length; index += 1) {
       for (let next = index + 1; next < floorNodes.length; next += 1) {
         const current = floorNodes[index];
         const candidate = floorNodes[next];
 
-        if (shouldDirectlyConnect(current, candidate)) {
+        if (shouldDirectlyConnect(current, candidate, floorWalls, floorHasCirculation)) {
           upsertUndirectedEdge(adjacency, current.id, candidate.id, estimateEdgeWeight(current, candidate));
         }
       }
@@ -186,6 +337,7 @@ function buildAdjacency(nodes) {
         }
 
         const nearest = [...circulationNodes]
+          .filter((candidate) => shouldDirectlyConnect(node, candidate, floorWalls, floorHasCirculation))
           .sort((a, b) => calculateGap(node, a) - calculateGap(node, b))[0];
 
         if (nearest) {
@@ -217,12 +369,17 @@ function buildAdjacency(nodes) {
 }
 
 export function buildTrackingGraphFromFloorMaps(floorMaps = []) {
-  const nodes = floorMaps.flatMap((floorMap) => {
+  const floorGraphs = floorMaps.map((floorMap) => {
     const floorNumber = floorMap?.floor ?? floorMap?.floorNumber ?? 0;
-    return buildNodesForFloor(floorNumber, floorMap);
+    return {
+      floor: normalizeFloor(floorNumber),
+      nodes: buildNodesForFloor(floorNumber, floorMap),
+      walls: Array.isArray(floorMap?.walls) ? floorMap.walls : [],
+    };
   });
+  const nodes = floorGraphs.flatMap(({ nodes: floorNodes }) => floorNodes);
 
-  const adjacency = buildAdjacency(nodes);
+  const adjacency = buildAdjacency(floorGraphs);
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
 
   return { nodes, nodeMap, adjacency };
@@ -308,16 +465,30 @@ function countHops(previous, destinationId) {
 
 function fallbackDistance(hazardNode, staffNode, hazardFloor, staffFloor) {
   if (hazardNode && staffNode) {
+    const centerDistance = calculateCenterDistance(hazardNode, staffNode);
+    const floorDelta = Math.abs(Number(hazardFloor) - Number(staffFloor));
+    const inferredHops = floorDelta > 0
+      ? 2 + floorDelta + Math.max(0, Math.round(centerDistance / 220))
+      : centerDistance <= 80
+      ? 1
+      : centerDistance <= 180
+      ? 2
+      : centerDistance <= 320
+      ? 3
+      : centerDistance <= 460
+      ? 4
+      : 5;
+
     return {
-      distance: calculateCenterDistance(hazardNode, staffNode),
-      hops: hazardFloor === staffFloor ? 1 : 2 + Math.abs(Number(hazardFloor) - Number(staffFloor)),
+      distance: centerDistance + (floorDelta * 200),
+      hops: inferredHops,
     };
   }
 
   const floorDelta = Math.abs(Number(hazardFloor) - Number(staffFloor));
   return {
     distance: floorDelta * 200,
-    hops: floorDelta === 0 ? 2 : 2 + floorDelta,
+    hops: floorDelta === 0 ? 3 : 3 + floorDelta,
   };
 }
 
@@ -479,6 +650,9 @@ export function findNearestStaff({
     .sort((a, b) => {
       if (a.isRecent !== b.isRecent) {
         return a.isRecent ? -1 : 1;
+      }
+      if (a.hops !== b.hops) {
+        return a.hops - b.hops;
       }
       if (a.distance !== b.distance) {
         return a.distance - b.distance;

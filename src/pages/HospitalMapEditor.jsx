@@ -45,6 +45,7 @@ export default function HospitalMapEditor() {
     // â”€â”€ Floor management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let floors = { 1: { zones: [], cameras: [], walls: [] } };
     let currentFloor = 1;
+    const LOCAL_DRAFT_KEY = hospitalId ? `guardianai.map-editor-draft.${hospitalId}` : '';
 
     function floorData(f) {
       if (!floors[f]) floors[f] = { zones: [], cameras: [], walls: [] };
@@ -59,15 +60,70 @@ export default function HospitalMapEditor() {
       };
     }
 
+    function replaceActiveFloorState(f, dataOverride = null) {
+      currentFloor = Number(f);
+      const d = dataOverride || floorData(currentFloor);
+      zones = JSON.parse(JSON.stringify(d.zones || []));
+      cameras = JSON.parse(JSON.stringify(d.cameras || []));
+      walls = JSON.parse(JSON.stringify(d.walls || []));
+      selected = null;
+    }
+
+    function resetHistory() {
+      historyStack = [];
+      historyIndex = -1;
+      updateUndoRedoBtns();
+    }
+
+    function cloneDraftState() {
+      return {
+        floors: JSON.parse(JSON.stringify(floors)),
+        currentFloor,
+        updatedAtMs: Date.now(),
+      };
+    }
+
+    function persistDraftLocally(payload) {
+      if (typeof window === 'undefined' || !LOCAL_DRAFT_KEY) return;
+
+      try {
+        window.localStorage.setItem(LOCAL_DRAFT_KEY, JSON.stringify(payload));
+      } catch (error) {
+        console.error('Map draft local save failed:', error);
+      }
+    }
+
+    function readDraftTimestamp(payload) {
+      if (!payload) return 0;
+      if (Number.isFinite(Number(payload.updatedAtMs))) {
+        return Number(payload.updatedAtMs);
+      }
+      if (typeof payload.updatedAt?.toDate === 'function') {
+        return payload.updatedAt.toDate().getTime();
+      }
+      if (typeof payload.updatedAt?.seconds === 'number') {
+        return (payload.updatedAt.seconds * 1000) + Math.round((payload.updatedAt.nanoseconds || 0) / 1_000_000);
+      }
+      return 0;
+    }
+
+    function applyDraftPayload(payload) {
+      if (!payload?.floors || !Object.keys(payload.floors).length) {
+        return false;
+      }
+
+      floors = payload.floors;
+      const availableFloors = Object.keys(floors).map(Number).sort((a, b) => a - b);
+      const preferredFloor = Number(payload.currentFloor);
+      const nextFloor = availableFloors.includes(preferredFloor) ? preferredFloor : availableFloors[0] || 1;
+      replaceActiveFloorState(nextFloor);
+      return true;
+    }
+
     function loadFloor(f) {
       saveCurrentFloor();
-      currentFloor = f;
-      const d = floorData(f);
-      zones = JSON.parse(JSON.stringify(d.zones));
-      cameras = JSON.parse(JSON.stringify(d.cameras));
-      walls = JSON.parse(JSON.stringify(d.walls));
-      selected = null;
-      historyStack = []; historyIndex = -1; updateUndoRedoBtns();
+      replaceActiveFloorState(f);
+      resetHistory();
       showProps(); render();
       renderFloorTabs();
     }
@@ -99,28 +155,18 @@ export default function HospitalMapEditor() {
 
       if (isOnlyFloor) {
         floors = { 1: { zones: [], cameras: [], walls: [] } };
-        currentFloor = 1;
-        zones = [];
-        cameras = [];
-        walls = [];
+        replaceActiveFloorState(1, floors[1]);
       } else {
         delete floors[numericFloor];
 
         if (currentFloor === numericFloor) {
           const remainingFloors = Object.keys(floors).map(Number).sort((a, b) => a - b);
           const fallbackFloor = remainingFloors.find((floor) => floor > numericFloor) ?? remainingFloors[remainingFloors.length - 1];
-          currentFloor = fallbackFloor;
-          const nextFloorData = floorData(fallbackFloor);
-          zones = JSON.parse(JSON.stringify(nextFloorData.zones));
-          cameras = JSON.parse(JSON.stringify(nextFloorData.cameras));
-          walls = JSON.parse(JSON.stringify(nextFloorData.walls));
+          replaceActiveFloorState(fallbackFloor);
         }
       }
 
-      selected = null;
-      historyStack = [];
-      historyIndex = -1;
-      updateUndoRedoBtns();
+      resetHistory();
       showProps();
       render();
       renderFloorTabs();
@@ -163,16 +209,22 @@ export default function HospitalMapEditor() {
     let _autoSaveTimer = null;
     let _autoSaveWriteId = 0;
     let _queuedAutoSaveTimer = null;
+    let _draftWriteInFlight = false;
+    let _pendingDraftPayload = null;
 
-    async function autoSave() {
-      saveCurrentFloor();
-      if (!hospitalId) return;
+    async function flushDraftToCloud() {
+      if (!hospitalId || _draftWriteInFlight || !_pendingDraftPayload) return;
 
+      _draftWriteInFlight = true;
       const writeId = ++_autoSaveWriteId;
+      const payload = _pendingDraftPayload;
+      _pendingDraftPayload = null;
+
       try {
         await setDoc(doc(db, `hospitals/${hospitalId}/meta`, 'map-editor-draft'), {
-          floors,
-          currentFloor,
+          floors: payload.floors,
+          currentFloor: payload.currentFloor,
+          updatedAtMs: payload.updatedAtMs,
           updatedAt: serverTimestamp(),
         }, { merge: true });
 
@@ -181,7 +233,22 @@ export default function HospitalMapEditor() {
         }
       } catch (e) {
         console.error('Map draft auto-save failed:', e);
+      } finally {
+        _draftWriteInFlight = false;
+        if (_pendingDraftPayload) {
+          flushDraftToCloud();
+        }
       }
+    }
+
+    async function autoSave() {
+      saveCurrentFloor();
+      const payload = cloneDraftState();
+      persistDraftLocally(payload);
+      if (!hospitalId) return;
+
+      _pendingDraftPayload = payload;
+      await flushDraftToCloud();
     }
 
     function queueAutoSave(delay = 250) {
@@ -202,18 +269,33 @@ export default function HospitalMapEditor() {
     }
 
     async function restoreDraftFromCloud() {
+      let bestDraft = null;
+
+      if (typeof window !== 'undefined' && LOCAL_DRAFT_KEY) {
+        try {
+          const localRaw = window.localStorage.getItem(LOCAL_DRAFT_KEY);
+          if (localRaw) {
+            const localDraft = JSON.parse(localRaw);
+            if (applyDraftPayload(localDraft)) {
+              bestDraft = localDraft;
+            }
+          }
+        } catch (error) {
+          console.error('Map draft local restore failed:', error);
+        }
+      }
+
       if (!hospitalId) return;
       try {
         const snap = await getDoc(doc(db, `hospitals/${hospitalId}/meta`, 'map-editor-draft'));
         if (!snap.exists()) return;
         const saved = snap.data();
         if (saved && saved.floors) {
-          floors = saved.floors;
-          currentFloor = saved.currentFloor || 1;
-          const d = floorData(currentFloor);
-          zones = JSON.parse(JSON.stringify(d.zones));
-          cameras = JSON.parse(JSON.stringify(d.cameras));
-          walls = JSON.parse(JSON.stringify(d.walls));
+          const bestDraftTs = readDraftTimestamp(bestDraft);
+          const cloudDraftTs = readDraftTimestamp(saved);
+          if (!bestDraft || cloudDraftTs >= bestDraftTs) {
+            applyDraftPayload(saved);
+          }
         }
       } catch { /* corrupt â€“ start fresh */ }
     }
@@ -631,13 +713,11 @@ export default function HospitalMapEditor() {
 
     window._hme_clearAll = function () {
       if (confirm('Clear the entire map?')) {
-        saveHistory();
+        clearTimeout(_queuedAutoSaveTimer);
+        _queuedAutoSaveTimer = null;
         floors = { 1: { zones: [], cameras: [], walls: [] } };
-        currentFloor = 1;
-        zones = [];
-        cameras = [];
-        walls = [];
-        selected = null;
+        replaceActiveFloorState(1, floors[1]);
+        resetHistory();
         renderFloorTabs();
         showProps();
         render();
@@ -676,18 +756,17 @@ export default function HospitalMapEditor() {
             floors = {};
             d.floors.forEach(f => { floors[f.floor] = { zones: f.zones || [], cameras: f.cameras || [], walls: f.walls || [] }; });
             if (!Object.keys(floors).length) throw new Error('No floor data found');
-            currentFloor = Number(Object.keys(floors).sort((a, b) => a - b)[0]);
-            const fd = floorData(currentFloor);
-            zones = JSON.parse(JSON.stringify(fd.zones));
-            cameras = JSON.parse(JSON.stringify(fd.cameras));
-            walls = JSON.parse(JSON.stringify(fd.walls));
+            replaceActiveFloorState(Number(Object.keys(floors).sort((a, b) => a - b)[0]));
+            resetHistory();
             renderFloorTabs();
             showToast('Loaded ' + d.floors.length + ' floor(s).');
           } else if (d.zones || d.cameras || d.walls) {
-            saveHistory();
-            zones = Array.isArray(d.zones) ? d.zones : [];
-            cameras = Array.isArray(d.cameras) ? d.cameras : [];
-            walls = Array.isArray(d.walls) ? d.walls : [];
+            zones = Array.isArray(d.zones) ? JSON.parse(JSON.stringify(d.zones)) : [];
+            cameras = Array.isArray(d.cameras) ? JSON.parse(JSON.stringify(d.cameras)) : [];
+            walls = Array.isArray(d.walls) ? JSON.parse(JSON.stringify(d.walls)) : [];
+            saveCurrentFloor();
+            resetHistory();
+            renderFloorTabs();
             showToast('Loaded ' + zones.length + ' zone(s).');
           } else {
             throw new Error('Unrecognised map JSON format');
@@ -1191,10 +1270,15 @@ export default function HospitalMapEditor() {
     restoreDraftFromCloud().finally(() => {
       renderFloorTabs();
       resize();
-      saveHistory();
+      resetHistory();
+      historyStack.push(snapshot());
+      historyIndex = 0;
+      updateUndoRedoBtns();
     });
 
     return () => {
+      saveCurrentFloor();
+      persistDraftLocally(cloneDraftState());
       document.removeEventListener('keydown', keyHandler);
       ro.disconnect();
       clearTimeout(_queuedAutoSaveTimer);
